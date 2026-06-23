@@ -1,10 +1,22 @@
 # Claude Handoff
 
-Use [plans/enterprise-rag-platform_2026-06-23.md](plans/enterprise-rag-platform_2026-06-23.md) as the source of truth.
+Use [plans/enterprise-rag-platform_2026-06-23.md](plans/enterprise-rag-platform_2026-06-23.md) as the source of truth. This repository is collaborative, so check the working tree before edits and never overwrite unrelated changes.
 
 ## Product Intent
 
-Create a generic enterprise RAG platform in .NET. The system should ingest documents, normalize text, chunk content, embed chunks, store chunk metadata in a document database, index vectors in Elasticsearch, and answer questions with grounded citations through configurable LLM endpoints.
+Create a generic enterprise RAG platform in .NET. The system ingests `txt`, `md`, and `pdf` documents from local files, S3 prefixes, and Azure Blob prefixes, normalizes text, chunks content, embeds chunks, stores documents and chunks in a document database, indexes vectors in Elasticsearch, and answers questions with grounded citations through configurable LLM endpoints and `LLM_SYSTEM_PROMPT`.
+
+## Repository Structure
+
+```text
+src/Rag.Core/              Core abstractions, models, adapters, strategies, pipelines, and DI
+src/Rag.Api/               ASP.NET Core API: async ingest, jobs, chunk preview, query, health, Swagger
+src/Rag.Cli/               CLI: ingest, jobs status, chunk:preview, query, config
+tests/Rag.Core.Tests/      Unit tests
+tests/Rag.Integration.Tests/ Integration/provider tests
+samples/                   Sample txt, md, and pdf inputs
+plans/                     Source implementation plan
+```
 
 ## Design Constraints
 
@@ -14,7 +26,20 @@ Create a generic enterprise RAG platform in .NET. The system should ingest docum
 - Options pattern for all environment-bound configuration.
 - DI-first composition through `AddRagPlatform(configuration)`.
 - No direct provider SDK construction or environment reads in core pipeline logic.
-- No Azure AI Search implementation in the current scope; only an interface/stub is planned.
+- No Azure AI Search implementation in the current scope; only interface/stub coverage is allowed.
+- Source adapters for `file`, `s3`, and `azureblob` must sit behind resolver contracts and keep parser contracts path-based.
+- Retrieval filters must be exact metadata filters and must not require query pipeline changes when a vector backend is swapped.
+- Grounding system prompts must come from options, not pipeline literals.
+
+## Runtime Selectors
+
+- `LLM_PROVIDER`: `deterministic`, `openai`, or `azure-openai`.
+- `DOC_STORE`: `memory`, `file`, `mongo`, or `cosmos`.
+- `VECTOR_STORE`: `memory` or `elasticsearch`.
+- `CHUNKING_STRATEGY`: `fixed`, `recursive`, `markdown-aware`, or `semantic`.
+- `LLM_SYSTEM_PROMPT`: grounding instruction sent with every chat request.
+
+The deterministic LLM client and memory stores are the default local path. HTTP LLM providers require separate embedding and chat endpoints. LocalStack and Azurite are the local defaults for S3 and Azure Blob source testing.
 
 ## Epic Order
 
@@ -31,14 +56,28 @@ Create a generic enterprise RAG platform in .NET. The system should ingest docum
 ## Quality Bar
 
 - Keep interfaces small and stable.
-- Keep adapters replaceable.
+- Keep adapters replaceable through registration and options.
 - Prefer explicit options objects and validation.
 - Keep CLI and API behavior aligned.
 - Return citations from query flows.
-- Pin package versions explicitly when project files are created.
-- Treat build warnings as errors in CI.
+- Pin package versions centrally in `Directory.Packages.props`.
+- Treat build warnings as errors.
+- Add focused tests for source changes and update module READMEs when creating or changing module responsibilities.
 
-## Environment Note
+## Verification
 
-`dotnet` is currently unavailable in this local environment (`command not found`). Do not claim build or test verification until the SDK is available and commands have actually been run.
+The current local environment has .NET SDK `10.0.301` available.
 
+```bash
+dotnet build -warnaserror
+dotnet test
+```
+
+For backend-dependent checks:
+
+```bash
+docker-compose up -d
+dotnet test
+```
+
+Do not claim build, test, Docker, provider, or end-to-end verification unless the commands were actually run in this session.

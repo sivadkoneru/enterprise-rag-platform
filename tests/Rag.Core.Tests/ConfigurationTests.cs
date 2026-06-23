@@ -94,7 +94,11 @@ public sealed class ConfigurationTests
             {
                 ["CHUNKING_STRATEGY"] = "semantic",
                 ["LLM_PROVIDER"] = "openai",
-                ["OPENAI_EMBEDDING_MODEL"] = "embed-env",
+                ["LLM_API_KEY"] = "key-env",
+                ["LLM_EMBEDDING_ENDPOINT"] = "https://llm.example/embeddings",
+                ["LLM_EMBEDDING_MODEL"] = "embed-env",
+                ["LLM_CHAT_ENDPOINT"] = "https://llm.example/chat/completions",
+                ["LLM_CHAT_MODEL"] = "chat-env",
                 ["DOC_STORE"] = "mongo",
                 ["MONGO_CONNECTION_STRING"] = "mongodb://env",
                 ["VECTOR_STORE"] = "elasticsearch",
@@ -109,12 +113,44 @@ public sealed class ConfigurationTests
 
         services.GetRequiredService<IOptions<RagOptions>>().Value.ChunkingStrategy.Should().Be("semantic");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.Provider.Should().Be("openai");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ApiKey.Should().Be("key-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingEndpoint.Should().Be("https://llm.example/embeddings");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingModel.Should().Be("embed-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatEndpoint.Should().Be("https://llm.example/chat/completions");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatModel.Should().Be("chat-env");
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.Provider.Should().Be("mongo");
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ConnectionString.Should().Be("mongodb://env");
         services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Provider.Should().Be("elasticsearch");
         services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Endpoint.Should().Be("http://env-elastic:9200");
         services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Dimensions.Should().Be(99);
+    }
+
+    [Fact]
+    public void AzureOpenAiProviderUsesSameLlmEndpointKeys()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LLM_PROVIDER"] = "azure-openai",
+                ["LLM_API_KEY"] = "azure-key",
+                ["LLM_EMBEDDING_ENDPOINT"] = "https://example.openai.azure.com/openai/deployments/embed/embeddings?api-version=2024-10-21",
+                ["LLM_EMBEDDING_MODEL"] = "embed-deployment",
+                ["LLM_CHAT_ENDPOINT"] = "https://example.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21",
+                ["LLM_CHAT_MODEL"] = "chat-deployment"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<LlmOptions>>().Value;
+        options.Provider.Should().Be("azure-openai");
+        options.ApiKey.Should().Be("azure-key");
+        options.EmbeddingEndpoint.Should().Be("https://example.openai.azure.com/openai/deployments/embed/embeddings?api-version=2024-10-21");
+        options.EmbeddingModel.Should().Be("embed-deployment");
+        options.ChatEndpoint.Should().Be("https://example.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21");
+        options.ChatModel.Should().Be("chat-deployment");
     }
 
     private static ServiceProvider BuildServicesFromJson(string json)
