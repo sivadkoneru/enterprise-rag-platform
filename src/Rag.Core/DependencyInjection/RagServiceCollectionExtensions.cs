@@ -113,6 +113,9 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IDocumentParser, TxtDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
         services.AddSingleton<IDocumentParser, PdfDocumentParser>();
+        services.AddSingleton<IDocumentParser, HtmlDocumentParser>();
+        services.AddSingleton<IMultiDocumentParser, JsonlDocumentParser>();
+        services.AddSingleton<IMultiDocumentParser, CsvDocumentParser>();
         services.AddSingleton<IDocumentParserResolver, DocumentParserResolver>();
 
         services.AddSingleton<IDocumentSource, LocalDirectorySource>();

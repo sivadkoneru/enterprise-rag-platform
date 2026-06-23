@@ -14,7 +14,7 @@ Source URIs use these schemes:
 - `s3://bucket/prefix` for AWS S3 or LocalStack.
 - `azureblob://container/prefix` for Azure Blob Storage or Azurite.
 
-Local directory enumeration is recursive and includes `.txt`, `.md`, and `.pdf` files in stable order. Cloud adapters should list objects under the prefix, download supported file types to temporary files, and clean them up after parsing.
+Local directory enumeration is recursive and includes `.txt`, `.md`, `.pdf`, `.html`, `.htm`, `.json`, `.jsonl`, `.ndjson`, `.jsonl.gz`, `.ndjson.gz`, and `.csv` files in stable order. Schema sidecars such as `*.schema.json` and `rag-ingestion.schema.json` are discovered and passed as source item attributes, but are not ingested as documents. Cloud adapters list objects under the prefix, download supported file types and matching schema sidecars to temporary files, and clean them up after parsing.
 
 ## Inputs And Outputs
 

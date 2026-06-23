@@ -8,6 +8,7 @@ namespace Rag.Core.Pipelines;
 public sealed class IngestionPipeline(
     IDocumentSourceResolver sourceResolver,
     IDocumentParserResolver parserResolver,
+    IEnumerable<IMultiDocumentParser> multiDocumentParsers,
     IChunkingStrategyFactory chunkingStrategyFactory,
     IEmbeddingClient embeddingClient,
     IDocumentStore documentStore,
@@ -52,7 +53,14 @@ public sealed class IngestionPipeline(
                     lock (allChunkIds)
                     {
                         allChunkIds.AddRange(result.ChunkIds);
-                        allDocumentIds.Add(result.DocumentId);
+                        if (result.DocumentIds is { Count: > 0 })
+                        {
+                            allDocumentIds.AddRange(result.DocumentIds);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(result.DocumentId))
+                        {
+                            allDocumentIds.Add(result.DocumentId);
+                        }
                     }
                 }).ConfigureAwait(false);
         }
@@ -69,40 +77,58 @@ public sealed class IngestionPipeline(
 
     private async Task<IngestionResult> IngestItemAsync(SourceItem item, IChunkingStrategy strategy, CancellationToken cancellationToken)
     {
-        var parser = parserResolver.Resolve(item.LocalPath);
-        var parsedDocument = await parser.ParseAsync(item.LocalPath, cancellationToken).ConfigureAwait(false);
-        var document = EnrichDocument(parsedDocument, item);
-        var chunks = await strategy.ChunkAsync(document, cancellationToken).ConfigureAwait(false);
-        var vectors = new List<VectorRecord>();
+        var documents = await ParseDocumentsAsync(item, cancellationToken).ConfigureAwait(false);
+        var documentIds = new List<string>();
+        var chunkIds = new List<string>();
 
-        foreach (var chunk in chunks)
+        foreach (var parsedDocument in documents)
         {
-            var vector = await embeddingClient.EmbedAsync(chunk.Text, cancellationToken).ConfigureAwait(false);
-            vectors.Add(new VectorRecord(
-                chunk.Id,
-                chunk.DocumentId,
-                vector,
-                new Dictionary<string, string>
-                {
-                    ["source"] = chunk.Metadata.Source,
-                    ["origin"] = chunk.Metadata.Origin,
-                    ["fileName"] = chunk.Metadata.FileName,
-                    ["fileType"] = FileType(chunk.Metadata.Extension),
-                    ["extension"] = chunk.Metadata.Extension,
-                    ["chunkIndex"] = chunk.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                }));
+            var document = EnrichDocument(parsedDocument, item);
+            var chunks = await strategy.ChunkAsync(document, cancellationToken).ConfigureAwait(false);
+            var vectors = new List<VectorRecord>();
+
+            foreach (var chunk in chunks)
+            {
+                var vector = await embeddingClient.EmbedAsync(chunk.Text, cancellationToken).ConfigureAwait(false);
+                vectors.Add(new VectorRecord(
+                    chunk.Id,
+                    chunk.DocumentId,
+                    vector,
+                    VectorMetadata(chunk)));
+            }
+
+            await documentStore.UpsertDocumentAsync(document, cancellationToken).ConfigureAwait(false);
+            await documentStore.UpsertChunksAsync(chunks, cancellationToken).ConfigureAwait(false);
+            await vectorStore.UpsertAsync(vectors, cancellationToken).ConfigureAwait(false);
+
+            documentIds.Add(document.Id);
+            chunkIds.AddRange(chunks.Select(chunk => chunk.Id));
         }
 
-        await documentStore.UpsertDocumentAsync(document, cancellationToken).ConfigureAwait(false);
-        await documentStore.UpsertChunksAsync(chunks, cancellationToken).ConfigureAwait(false);
-        await vectorStore.UpsertAsync(vectors, cancellationToken).ConfigureAwait(false);
+        return new IngestionResult(documentIds.LastOrDefault() ?? string.Empty, chunkIds.Count, strategy.Name, chunkIds, documentIds);
+    }
 
-        return new IngestionResult(document.Id, chunks.Count, strategy.Name, chunks.Select(chunk => chunk.Id).ToArray(), [document.Id]);
+    private async Task<IReadOnlyList<ParsedDocument>> ParseDocumentsAsync(SourceItem item, CancellationToken cancellationToken)
+    {
+        var multiParser = multiDocumentParsers.FirstOrDefault(parser => parser.CanParse(item.LocalPath));
+        if (multiParser is not null)
+        {
+            var documents = new List<ParsedDocument>();
+            await foreach (var document in multiParser.ParseManyAsync(item.LocalPath, item.Attributes, cancellationToken).ConfigureAwait(false))
+            {
+                documents.Add(document);
+            }
+
+            return documents;
+        }
+
+        var parser = parserResolver.Resolve(item.LocalPath);
+        return [await parser.ParseAsync(item.LocalPath, cancellationToken).ConfigureAwait(false)];
     }
 
     private static ParsedDocument EnrichDocument(ParsedDocument document, SourceItem item)
     {
-        var documentId = StableId(item.Origin, item.Source);
+        var documentId = StableId(item.Origin, item.Source, RecordKey(document));
         var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (document.Metadata.Attributes is not null)
         {
@@ -133,9 +159,40 @@ public sealed class IngestionPipeline(
         return new ParsedDocument(documentId, document.Text, metadata);
     }
 
-    private static string StableId(string origin, string source)
+    private static Dictionary<string, string> VectorMetadata(TextChunk chunk)
     {
-        var input = $"{origin}:{source}";
+        var metadata = new Dictionary<string, string>
+        {
+            ["source"] = chunk.Metadata.Source,
+            ["origin"] = chunk.Metadata.Origin,
+            ["fileName"] = chunk.Metadata.FileName,
+            ["fileType"] = FileType(chunk.Metadata.Extension),
+            ["extension"] = chunk.Metadata.Extension,
+            ["chunkIndex"] = chunk.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
+        if (chunk.Metadata.Attributes is not null &&
+            chunk.Metadata.Attributes.TryGetValue("recordKey", out var recordKey) &&
+            !string.IsNullOrWhiteSpace(recordKey))
+        {
+            metadata["recordKey"] = recordKey;
+        }
+
+        return metadata;
+    }
+
+    private static string? RecordKey(ParsedDocument document)
+    {
+        return document.Metadata.Attributes is not null &&
+            document.Metadata.Attributes.TryGetValue("recordKey", out var recordKey) &&
+            !string.IsNullOrWhiteSpace(recordKey)
+                ? recordKey
+                : null;
+    }
+
+    private static string StableId(string origin, string source, string? recordKey)
+    {
+        var input = string.IsNullOrWhiteSpace(recordKey) ? $"{origin}:{source}" : $"{origin}:{source}:{recordKey}";
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input)))[..24].ToLowerInvariant();
     }
 

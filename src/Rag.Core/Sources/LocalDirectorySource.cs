@@ -1,5 +1,6 @@
 using Rag.Core.Abstractions;
 using Rag.Core.Models;
+using Rag.Core.Parsing;
 
 namespace Rag.Core.Sources;
 
@@ -33,10 +34,7 @@ public sealed class LocalDirectorySource : IDocumentSource
                 Scheme,
                 info.Name,
                 DocumentSourceSupport.NormalizeExtension(info.Name),
-                new Dictionary<string, string>
-                {
-                    ["path"] = info.FullName
-                });
+                Attributes(info.FullName));
             await Task.Yield();
         }
     }
@@ -69,5 +67,22 @@ public sealed class LocalDirectorySource : IDocumentSource
             .Where(DocumentSourceSupport.IsSupported)
             .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, string> Attributes(string path)
+    {
+        var attributes = new Dictionary<string, string>
+        {
+            ["path"] = path,
+            [StructuredSchemaLoader.SourceFileNameAttribute] = Path.GetFileName(path)
+        };
+
+        var schema = StructuredSchemaLoader.FindLocalSchema(path);
+        if (!string.IsNullOrWhiteSpace(schema))
+        {
+            attributes[StructuredSchemaLoader.SchemaPathAttribute] = schema;
+        }
+
+        return attributes;
     }
 }

@@ -72,7 +72,7 @@ public sealed class AsyncIngestionContractTests
         Directory.CreateDirectory(nested);
         await File.WriteAllTextAsync(Path.Combine(directory, "first.txt"), "Alpha refunds are tracked locally.");
         await File.WriteAllTextAsync(Path.Combine(nested, "second.md"), "# Beta\n\nMarkdown policies are local too.");
-        await File.WriteAllTextAsync(Path.Combine(directory, "ignored.csv"), "unsupported");
+        await File.WriteAllTextAsync(Path.Combine(directory, "ignored.tmp"), "unsupported");
 
         try
         {
@@ -99,7 +99,7 @@ public sealed class AsyncIngestionContractTests
         Directory.CreateDirectory(nested);
         await File.WriteAllTextAsync(Path.Combine(nested, "zeta.md"), "# Zeta");
         await File.WriteAllTextAsync(Path.Combine(directory, "alpha.txt"), "Alpha");
-        await File.WriteAllTextAsync(Path.Combine(directory, "ignored.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(directory, "ignored.tmp"), "{}");
 
         try
         {

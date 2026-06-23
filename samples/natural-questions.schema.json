@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "files": ["simplified-nq-*.jsonl", "simplified-nq-*.jsonl.gz", "*.jsonl.gz"],
+      "format": "jsonl",
+      "id": "/example_id",
+      "text": [
+        {
+          "path": "/question_text",
+          "format": "plain",
+          "label": "Question"
+        },
+        {
+          "path": "/document_html",
+          "format": "html",
+          "label": "Wikipedia Document",
+          "required": true
+        }
+      ],
+      "metadata": {
+        "documentUrl": "/document_url"
+      }
+    }
+  ]
+}

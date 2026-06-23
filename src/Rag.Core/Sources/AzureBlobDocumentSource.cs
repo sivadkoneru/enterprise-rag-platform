@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Rag.Core.Abstractions;
 using Rag.Core.Configuration;
 using Rag.Core.Models;
+using Rag.Core.Parsing;
 
 namespace Rag.Core.Sources;
 
@@ -22,29 +23,48 @@ public sealed class AzureBlobDocumentSource(IOptions<AzureBlobOptions> options) 
     {
         var parsed = Parse(sourceUri);
         var container = Container(parsed.Container);
+        var blobs = new List<string>();
         await foreach (var blob in container.GetBlobsAsync(prefix: parsed.Prefix, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            if (!DocumentSourceSupport.IsSupported(blob.Name))
+            blobs.Add(blob.Name);
+        }
+
+        var blobNames = blobs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var blobName in blobs.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!DocumentSourceSupport.IsSupported(blobName))
             {
                 continue;
             }
 
-            var localPath = DocumentSourceSupport.TempPathFor(blob.Name);
-            var client = container.GetBlobClient(blob.Name);
+            var localPath = DocumentSourceSupport.TempPathFor(blobName);
+            var client = container.GetBlobClient(blobName);
             await client.DownloadToAsync(localPath, cancellationToken).ConfigureAwait(false);
+
+            var attributes = new Dictionary<string, string>
+            {
+                ["container"] = parsed.Container,
+                ["blob"] = blobName,
+                [StructuredSchemaLoader.SourceFileNameAttribute] = Path.GetFileName(blobName)
+            };
+            var cleanupPaths = new List<string> { localPath };
+            var schemaName = SchemaName(blobName, blobNames);
+            if (!string.IsNullOrWhiteSpace(schemaName))
+            {
+                var schemaPath = DocumentSourceSupport.TempPathFor(schemaName);
+                await container.GetBlobClient(schemaName).DownloadToAsync(schemaPath, cancellationToken).ConfigureAwait(false);
+                attributes[StructuredSchemaLoader.SchemaPathAttribute] = schemaPath;
+                cleanupPaths.Add(schemaPath);
+            }
 
             yield return new SourceItem(
                 localPath,
-                $"azureblob://{parsed.Container}/{blob.Name}",
+                $"azureblob://{parsed.Container}/{blobName}",
                 Scheme,
-                Path.GetFileName(blob.Name),
-                DocumentSourceSupport.NormalizeExtension(blob.Name),
-                new Dictionary<string, string>
-                {
-                    ["container"] = parsed.Container,
-                    ["blob"] = blob.Name
-                },
-                () => DocumentSourceSupport.CleanupTempFileAsync(localPath));
+                Path.GetFileName(blobName),
+                DocumentSourceSupport.NormalizeExtension(blobName),
+                attributes,
+                () => CleanupAsync(cleanupPaths));
         }
     }
 
@@ -67,5 +87,19 @@ public sealed class AzureBlobDocumentSource(IOptions<AzureBlobOptions> options) 
     {
         var uri = new Uri(sourceUri, UriKind.Absolute);
         return (uri.Host, uri.AbsolutePath.TrimStart('/'));
+    }
+
+    private static string? SchemaName(string blobName, ISet<string> blobNames)
+    {
+        return StructuredSchemaLoader.CandidateSchemaNames(blobName)
+            .FirstOrDefault(blobNames.Contains);
+    }
+
+    private static async ValueTask CleanupAsync(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            await DocumentSourceSupport.CleanupTempFileAsync(path).ConfigureAwait(false);
+        }
     }
 }

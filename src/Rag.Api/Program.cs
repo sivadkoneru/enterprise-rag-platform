@@ -11,6 +11,12 @@ builder.Configuration
     .AddInMemoryCollection(EnvFile.LoadFromWorkingDirectory())
     .AddEnvironmentVariables()
     .AddCommandLine(args);
+var configuredUrls = builder.Configuration["ASPNETCORE_URLS"] ?? builder.Configuration["urls"];
+if (!string.IsNullOrWhiteSpace(configuredUrls))
+{
+    builder.WebHost.UseUrls(configuredUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+}
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddRagPlatform(builder.Configuration);

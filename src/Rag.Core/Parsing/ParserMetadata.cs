@@ -12,7 +12,7 @@ internal static class ParserMetadata
             documentId,
             info.FullName,
             info.Name,
-            info.Extension.TrimStart('.').ToLowerInvariant(),
+            Extension(path).TrimStart('.'),
             contentType,
             info.Length,
             DateTimeOffset.UtcNow);
@@ -22,5 +22,20 @@ internal static class ParserMetadata
     {
         var input = $"{Path.GetFullPath(path)}|{length}|{lastWriteTimeUtc:O}";
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input)))[..24].ToLowerInvariant();
+    }
+
+    private static string Extension(string path)
+    {
+        if (path.EndsWith(".jsonl.gz", StringComparison.OrdinalIgnoreCase))
+        {
+            return ".jsonl.gz";
+        }
+
+        if (path.EndsWith(".ndjson.gz", StringComparison.OrdinalIgnoreCase))
+        {
+            return ".ndjson.gz";
+        }
+
+        return Path.GetExtension(path).ToLowerInvariant();
     }
 }
