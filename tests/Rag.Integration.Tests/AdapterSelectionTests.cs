@@ -5,6 +5,8 @@ using Rag.Core.Abstractions;
 using Rag.Core.DependencyInjection;
 using Rag.Core.Stores;
 using Rag.Core.Vector;
+using Rag.Providers.Cosmos;
+using Rag.Providers.Mongo;
 using Xunit;
 
 namespace Rag.Integration.Tests;
@@ -26,7 +28,15 @@ public sealed class AdapterSelectionTests
             })
             .Build();
 
-        var store = new ServiceCollection().AddRagPlatform(config).BuildServiceProvider().GetRequiredService<IDocumentStore>();
+        // Mongo and Cosmos document stores now live in opt-in provider packages; AddRagMongo /
+        // AddRagCosmos register them as keyed IDocumentStore services that AddRagPlatform's
+        // resolver looks up by name.
+        var store = new ServiceCollection()
+            .AddRagPlatform(config)
+            .AddRagMongo(config)
+            .AddRagCosmos(config)
+            .BuildServiceProvider()
+            .GetRequiredService<IDocumentStore>();
 
         store.Should().BeOfType(expectedType);
     }

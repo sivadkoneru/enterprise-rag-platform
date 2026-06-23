@@ -10,5 +10,9 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="..\..\src\Rag.Core\Rag.Core.csproj" />
+    <ProjectReference Include="..\..\src\Rag.Providers.Aws\Rag.Providers.Aws.csproj" />
+    <ProjectReference Include="..\..\src\Rag.Providers.AzureBlob\Rag.Providers.AzureBlob.csproj" />
+    <ProjectReference Include="..\..\src\Rag.Providers.Cosmos\Rag.Providers.Cosmos.csproj" />
+    <ProjectReference Include="..\..\src\Rag.Providers.Mongo\Rag.Providers.Mongo.csproj" />
   </ItemGroup>
 </Project>

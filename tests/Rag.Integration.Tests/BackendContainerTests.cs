@@ -9,21 +9,23 @@ using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
 using Rag.Core.Models;
 using Rag.Core.Vector;
+using Rag.Providers.Mongo;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Rag.Integration.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class BackendContainerTests
 {
     [Fact]
     public async Task MongoDocumentStorePersistsAndHydratesChunks()
     {
-        await using var mongo = new ContainerBuilder()
+        await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
             .WithImage("mongo:7")
             .WithPortBinding(27017, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017))
-            .Build();
-        await mongo.StartAsync();
+            .Build());
 
         var connectionString = $"mongodb://localhost:{mongo.GetMappedPublicPort(27017)}";
         var config = new ConfigurationBuilder()
@@ -34,7 +36,11 @@ public sealed class BackendContainerTests
                 ["MONGO_DATABASE"] = $"rag_{Guid.NewGuid():N}"
             })
             .Build();
-        var store = new ServiceCollection().AddRagPlatform(config).BuildServiceProvider().GetRequiredService<IDocumentStore>();
+        var store = new ServiceCollection()
+            .AddRagPlatform(config)
+            .AddRagMongo(config)
+            .BuildServiceProvider()
+            .GetRequiredService<IDocumentStore>();
         var metadata = new DocumentMetadata("doc", "container", "doc.txt", "txt", "text/plain", 10, DateTimeOffset.UtcNow);
         var document = new ParsedDocument("doc", "hello world", metadata);
         var chunk = new TextChunk("chunk-1", "doc", 0, "hello world", 0, 11, metadata);
@@ -49,15 +55,14 @@ public sealed class BackendContainerTests
     [Fact]
     public async Task ElasticsearchVectorStoreIndexesAndSearchesByCosineSimilarity()
     {
-        await using var elasticsearch = new ContainerBuilder()
+        await using var elasticsearch = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
             .WithImage("docker.elastic.co/elasticsearch/elasticsearch:8.15.0")
             .WithEnvironment("discovery.type", "single-node")
             .WithEnvironment("xpack.security.enabled", "false")
             .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
             .WithPortBinding(9200, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request.ForPort(9200).ForPath("/")))
-            .Build();
-        await elasticsearch.StartAsync();
+            .Build());
 
         var endpoint = $"http://localhost:{elasticsearch.GetMappedPublicPort(9200)}";
         var store = new ElasticsearchVectorStore(
@@ -68,7 +73,8 @@ public sealed class BackendContainerTests
                 Endpoint = endpoint,
                 IndexName = $"rag-{Guid.NewGuid():N}",
                 Dimensions = 3
-            }));
+            }),
+            NullLogger<ElasticsearchVectorStore>.Instance);
 
         await store.EnsureIndexAsync();
         await store.UpsertAsync(
@@ -80,6 +86,47 @@ public sealed class BackendContainerTests
 
         results.Should().ContainSingle();
         results[0].ChunkId.Should().Be("chunk-a");
+    }
+
+    [Fact]
+    public async Task PipelineIngestsAndQueriesThroughMongoAndElasticsearch()
+    {
+        await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
+            .WithImage("mongo:7")
+            .WithPortBinding(27017, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017))
+            .Build());
+        await using var elasticsearch = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
+            .WithImage("docker.elastic.co/elasticsearch/elasticsearch:8.15.0")
+            .WithEnvironment("discovery.type", "single-node")
+            .WithEnvironment("xpack.security.enabled", "false")
+            .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
+            .WithPortBinding(9200, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request.ForPort(9200).ForPath("/")))
+            .Build());
+
+        var sample = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../samples/handbook.txt"));
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DOC_STORE"] = "mongo",
+                ["MONGO_CONNECTION_STRING"] = $"mongodb://localhost:{mongo.GetMappedPublicPort(27017)}",
+                ["MONGO_DATABASE"] = $"rag_{Guid.NewGuid():N}",
+                ["VECTOR_STORE"] = "elasticsearch",
+                ["ELASTICSEARCH_URI"] = $"http://localhost:{elasticsearch.GetMappedPublicPort(9200)}",
+                ["ELASTICSEARCH_INDEX"] = $"rag-{Guid.NewGuid():N}",
+                ["ELASTICSEARCH_VECTOR_DIMENSIONS"] = "64",
+                ["LLM_PROVIDER"] = "deterministic",
+                ["Llm:EmbeddingDimensions"] = "64"
+            })
+            .Build();
+        var services = new ServiceCollection().AddRagPlatform(config).AddRagMongo(config).BuildServiceProvider();
+
+        var ingestion = await services.GetRequiredService<IIngestionPipeline>().IngestAsync(new IngestionRequest(sample));
+        var answer = await services.GetRequiredService<IQueryPipeline>().QueryAsync(new QueryRequest("What is the refund policy?"));
+
+        ingestion.ChunkCount.Should().BeGreaterThan(0);
+        answer.Citations.Should().Contain(citation => citation.Source.EndsWith("handbook.txt", StringComparison.Ordinal));
     }
 
     private sealed class SimpleHttpClientFactory : IHttpClientFactory
