@@ -12,7 +12,7 @@ internal static class DocumentSourceSupport
 
     public static string NormalizeExtension(string pathOrName)
     {
-        return Path.GetExtension(pathOrName).TrimStart('.').ToLowerInvariant();
+        return Path.GetExtension(pathOrName).ToLowerInvariant();
     }
 
     public static string TempPathFor(string fileName)

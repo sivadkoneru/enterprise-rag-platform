@@ -45,10 +45,15 @@ public sealed class QueryPipeline(
         builder.AppendLine("Context:");
         foreach (var chunk in chunks)
         {
-            builder.AppendLine($"[{chunk.Id}] source={chunk.Metadata.Source} origin={chunk.Metadata.Origin} type=.{chunk.Metadata.Extension}");
+            builder.AppendLine($"[{chunk.Id}] source={chunk.Metadata.Source} origin={chunk.Metadata.Origin} type={FileType(chunk.Metadata.Extension)}");
             builder.AppendLine(chunk.Text);
         }
 
         return builder.ToString();
+    }
+
+    private static string FileType(string extension)
+    {
+        return extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension.ToLowerInvariant()}";
     }
 }
