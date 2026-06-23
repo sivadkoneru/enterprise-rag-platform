@@ -55,6 +55,14 @@ public static class RagServiceCollectionExtensions
                 configuration["INGESTION_MAX_DEGREE_OF_PARALLELISM"] ?? configuration["INGESTION_MAX_PARALLELISM"],
                 options.MaxDegreeOfParallelism);
         });
+        services.Configure<JobStoreOptions>(options =>
+        {
+            configuration.GetSection("JobStore").Bind(options);
+            options.Provider = configuration["JOB_STORE"] ?? options.Provider;
+            options.ConnectionString = configuration["MONGO_CONNECTION_STRING"] ?? options.ConnectionString;
+            options.DatabaseName = configuration["MONGO_DATABASE"] ?? options.DatabaseName;
+            options.CollectionName = configuration["MONGO_JOBS_COLLECTION"] ?? options.CollectionName;
+        });
         services.Configure<S3Options>(options =>
         {
             configuration.GetSection("S3").Bind(options);
@@ -149,7 +157,9 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IIngestionPipeline, IngestionPipeline>();
         services.AddSingleton<IQueryPipeline, QueryPipeline>();
         services.AddSingleton<IChunkPreviewService, ChunkPreviewService>();
-        services.AddSingleton<IIngestionJobStore, InMemoryIngestionJobStore>();
+        services.AddSingleton<InMemoryIngestionJobStore>();
+        services.AddSingleton<MongoIngestionJobStore>();
+        services.AddSingleton<IIngestionJobStore>(ResolveJobStore);
         services.AddSingleton<IIngestionJobQueue, IngestionJobQueue>();
         services.AddHostedService<IngestionBackgroundService>();
 
@@ -190,6 +200,16 @@ public static class RagServiceCollectionExtensions
             "elasticsearch" => services.GetRequiredService<ElasticsearchVectorStore>(),
             "memory" => services.GetRequiredService<InMemoryVectorStore>(),
             _ => services.GetRequiredService<InMemoryVectorStore>()
+        };
+    }
+
+    private static IIngestionJobStore ResolveJobStore(IServiceProvider services)
+    {
+        var provider = services.GetRequiredService<IOptions<JobStoreOptions>>().Value.Provider;
+        return provider.ToLowerInvariant() switch
+        {
+            "mongo" => services.GetRequiredService<MongoIngestionJobStore>(),
+            _ => services.GetRequiredService<InMemoryIngestionJobStore>()
         };
     }
 

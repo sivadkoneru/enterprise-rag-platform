@@ -17,8 +17,17 @@ public sealed class IngestionPipeline(
 {
     public async Task<IngestionResult> IngestAsync(IngestionRequest request, CancellationToken cancellationToken = default)
     {
+        return await IngestAsync(request, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         var allChunkIds = new List<string>();
         var allDocumentIds = new List<string>();
+        var processedSourceCount = 0;
         var strategy = chunkingStrategyFactory.Resolve(request.Strategy);
         var sourceUris = request.SourceUris;
 
@@ -39,6 +48,8 @@ public sealed class IngestionPipeline(
                     sourceItems.Add(item);
                 }
             }
+
+            ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, null);
 
             await Parallel.ForEachAsync(
                 sourceItems,
@@ -61,6 +72,9 @@ public sealed class IngestionPipeline(
                         {
                             allDocumentIds.Add(result.DocumentId);
                         }
+
+                        processedSourceCount++;
+                        ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, item.Source);
                     }
                 }).ConfigureAwait(false);
         }
@@ -72,6 +86,7 @@ public sealed class IngestionPipeline(
             }
         }
 
+        ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, null);
         return new IngestionResult(allDocumentIds.LastOrDefault() ?? string.Empty, allChunkIds.Count, strategy.Name, allChunkIds, allDocumentIds);
     }
 
@@ -199,5 +214,24 @@ public sealed class IngestionPipeline(
     private static string FileType(string extension)
     {
         return extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension.ToLowerInvariant()}";
+    }
+
+    private static void ReportProgress(
+        IProgress<IngestionProgress>? progress,
+        int totalSourceCount,
+        int processedSourceCount,
+        IReadOnlyList<string> documentIds,
+        IReadOnlyList<string> chunkIds,
+        string? currentSource)
+    {
+        progress?.Report(new IngestionProgress(
+            totalSourceCount,
+            processedSourceCount,
+            documentIds.Count,
+            chunkIds.Count,
+            documentIds.ToArray(),
+            chunkIds.ToArray(),
+            currentSource,
+            DateTimeOffset.UtcNow));
     }
 }

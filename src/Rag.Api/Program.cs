@@ -126,10 +126,15 @@ internal static class IngestionJobApiExtensions
             strategy = job.Request.Strategy,
             documentCount = job.DocumentCount,
             chunkCount = job.ChunkCount,
+            totalSourceCount = job.TotalSourceCount,
+            processedSourceCount = job.ProcessedSourceCount,
             documentIds = job.DocumentIds ?? [],
             chunkIds = job.ChunkIds ?? [],
+            currentSource = job.CurrentSource,
+            workerId = job.WorkerId,
             error = job.Error,
             createdAt = job.CreatedAt,
+            updatedAt = job.UpdatedAt,
             startedAt = job.StartedAt,
             completedAt = job.CompletedAt
         };

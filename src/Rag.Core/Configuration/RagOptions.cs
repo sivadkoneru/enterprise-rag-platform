@@ -42,6 +42,17 @@ public sealed class IngestionOptions
     public int MaxDegreeOfParallelism { get; set; } = 4;
 }
 
+public sealed class JobStoreOptions
+{
+    public string Provider { get; set; } = "memory";
+
+    public string? ConnectionString { get; set; }
+
+    public string DatabaseName { get; set; } = "rag";
+
+    public string CollectionName { get; set; } = "ingestion_jobs";
+}
+
 public sealed class S3Options
 {
     public string? Region { get; set; } = "us-east-1";

@@ -96,6 +96,8 @@ Common options:
 | `LLM_CHAT_MODEL` | Chat model/deployment name. |
 | `LLM_SYSTEM_PROMPT` | Grounding prompt sent on every chat call. |
 | `INGESTION_MAX_PARALLELISM` | Maximum concurrent source items processed by background ingestion. |
+| `JOB_STORE` | Ingestion job status backend: `memory` or `mongo`. |
+| `MONGO_JOBS_COLLECTION` | MongoDB collection for persistent ingestion jobs when `JOB_STORE=mongo`. |
 | `S3_REGION` | AWS region for S3 source enumeration. |
 | `S3_ENDPOINT` | Optional S3 endpoint override, for example LocalStack. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credentials for S3 sources; local defaults use fake LocalStack values. |
@@ -120,6 +122,8 @@ DOC_STORE=mongo
 MONGO_CONNECTION_STRING=mongodb://localhost:27017
 MONGO_DATABASE=rag
 MONGO_CHUNKS_COLLECTION=chunks
+JOB_STORE=mongo
+MONGO_JOBS_COLLECTION=ingestion_jobs
 VECTOR_STORE=elasticsearch
 ELASTICSEARCH_URI=http://localhost:9200
 ELASTICSEARCH_INDEX=rag-chunks
