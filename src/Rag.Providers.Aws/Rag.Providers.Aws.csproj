@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>AWS S3 document source for the Enterprise RAG Platform. Adds s3:// ingestion support via AddRagAwsS3.</Description>
+    <PackageTags>rag;aws;s3;ingestion;dotnet</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" />
+    <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
+  </ItemGroup>
+</Project>

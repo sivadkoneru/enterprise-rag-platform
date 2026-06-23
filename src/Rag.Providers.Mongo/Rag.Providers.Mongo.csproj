@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>MongoDB document store and ingestion job store for the Enterprise RAG Platform. Enables DOC_STORE=mongo and JOB_STORE=mongo via AddRagMongo.</Description>
+    <PackageTags>rag;mongodb;document-store;job-store;dotnet</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
+    <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
+  </ItemGroup>
+</Project>

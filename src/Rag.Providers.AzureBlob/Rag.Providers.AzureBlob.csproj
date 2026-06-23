@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Azure Blob Storage document source for the Enterprise RAG Platform. Adds azureblob:// ingestion support via AddRagAzureBlob.</Description>
+    <PackageTags>rag;azure;blob-storage;ingestion;dotnet</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
+  </ItemGroup>
+</Project>
