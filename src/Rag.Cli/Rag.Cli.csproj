@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- No ASP.NET Core framework reference: the CLI is a console app and only needs the
+         Extensions abstractions it picks up transitively from Rag.Core. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
+    <ProjectReference Include="..\Rag.Providers.Aws\Rag.Providers.Aws.csproj" />
+    <ProjectReference Include="..\Rag.Providers.AzureBlob\Rag.Providers.AzureBlob.csproj" />
+    <ProjectReference Include="..\Rag.Providers.Cosmos\Rag.Providers.Cosmos.csproj" />
+    <ProjectReference Include="..\Rag.Providers.Mongo\Rag.Providers.Mongo.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Rag.Cli.Tests" />
+  </ItemGroup>
+</Project>
