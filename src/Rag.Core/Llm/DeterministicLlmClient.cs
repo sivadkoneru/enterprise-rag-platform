@@ -1,22 +1,23 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Options;
 using Rag.Core.Abstractions;
+using Rag.Core.Configuration;
 using Rag.Core.Models;
 
 namespace Rag.Core.Llm;
 
-public sealed class DeterministicLlmClient : IEmbeddingClient, IChatClient
+public sealed class DeterministicLlmClient(IOptions<LlmOptions> options) : IEmbeddingClient, IChatClient
 {
-    private const int Dimensions = 256;
-
     public Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var vector = new float[Dimensions];
+        var dimensions = Math.Max(1, options.Value.EmbeddingDimensions);
+        var vector = new float[dimensions];
         foreach (var token in Tokenize(input))
         {
             var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
-            var index = BitConverter.ToUInt16(hash, 0) % Dimensions;
+            var index = BitConverter.ToUInt16(hash, 0) % dimensions;
             vector[index] += 1f;
         }
 

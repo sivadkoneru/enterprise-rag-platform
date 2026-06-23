@@ -1,9 +1,54 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
+
+  <!-- Analysis. AnalysisLevel alone leaves most CA rules off at the default AnalysisMode, and
+       IDE style rules never run during build unless EnforceCodeStyleInBuild is set. -->
+  <PropertyGroup>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- Package identity shared by every packable project. Per-package Description and PackageTags
+       live in the individual csproj files. -->
+  <PropertyGroup>
+    <Authors>Siva Koneru</Authors>
+    <Product>Enterprise RAG Platform</Product>
+    <PackageProjectUrl>https://github.com/sivadkoneru/enterprise-rag-platform</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sivadkoneru/enterprise-rag-platform</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- TODO: no LICENSE file exists in this repository yet. Add one and set
+         PackageLicenseExpression (for example MIT) before publishing to a public feed. -->
+  </PropertyGroup>
+
+  <!-- Symbols and source-linkable, reproducible builds. -->
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true' or '$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- Public API documentation ships with the packages. CS1591 stays off: requiring an XML
+       comment on every public member is noise on records and options types whose names already
+       say what they are. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>
