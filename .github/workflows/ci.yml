@@ -5,6 +5,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -66,3 +67,86 @@ jobs:
           name: test-results
           path: ./test-results/**/*.trx
           if-no-files-found: ignore
+
+  release:
+    name: Build packages & release
+    # Runs only after build & test succeed, and only for version tag pushes
+    # (e.g. v1.2.3). Pushes to main and pull requests stop after build-test.
+    needs: build-test
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'Directory.Build.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Derive version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore enterprise-rag-platform.sln
+
+      - name: Pack Rag.Core (NuGet package)
+        run: >-
+          dotnet pack src/Rag.Core/Rag.Core.csproj
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.value }}
+          -p:IncludeSymbols=true
+          -p:SymbolPackageFormat=snupkg
+          --output ./artifacts
+
+      - name: Publish Rag.Api
+        run: >-
+          dotnet publish src/Rag.Api/Rag.Api.csproj
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.value }}
+          --output ./publish/Rag.Api
+
+      - name: Publish Rag.Cli
+        run: >-
+          dotnet publish src/Rag.Cli/Rag.Cli.csproj
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.value }}
+          --output ./publish/Rag.Cli
+
+      - name: Archive published apps
+        run: |
+          version="${{ steps.version.outputs.value }}"
+          (cd publish && zip -r "../artifacts/Rag.Api-${version}.zip" Rag.Api)
+          (cd publish && zip -r "../artifacts/Rag.Cli-${version}.zip" Rag.Cli)
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: ./artifacts/**
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" ./artifacts/* \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            $prerelease
