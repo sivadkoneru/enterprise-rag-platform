@@ -17,7 +17,13 @@ public sealed class AdapterSelectionTests
     public void DocumentStoreSelectionUsesConfiguredProvider(string provider, Type expectedType)
     {
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["DocumentStore:Provider"] = provider })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DocumentStore:Provider"] = provider,
+                ["MONGO_CONNECTION_STRING"] = "mongodb://localhost:27017",
+                ["COSMOS_ENDPOINT"] = "https://localhost:8081",
+                ["COSMOS_KEY"] = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            })
             .Build();
 
         var store = new ServiceCollection().AddRagPlatform(config).BuildServiceProvider().GetRequiredService<IDocumentStore>();

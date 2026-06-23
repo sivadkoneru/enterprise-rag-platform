@@ -8,6 +8,6 @@
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="OpenAI" />
-    <PackageReference Include="UglyToad.PdfPig" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 </Project>

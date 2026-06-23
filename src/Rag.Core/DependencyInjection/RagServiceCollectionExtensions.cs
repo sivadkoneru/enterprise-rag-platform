@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 using Rag.Core.Abstractions;
 using Rag.Core.Chunking;
@@ -61,8 +62,8 @@ public static class RagServiceCollectionExtensions
             options.Dimensions = Int(configuration["ELASTICSEARCH_VECTOR_DIMENSIONS"], options.Dimensions);
         });
 
-        services.AddHttpClient("rag-llm");
-        services.AddHttpClient("rag-elasticsearch");
+        services.AddHttpClient("rag-llm").AddStandardResilienceHandler();
+        services.AddHttpClient("rag-elasticsearch").AddStandardResilienceHandler();
 
         services.AddSingleton<IDocumentParser, TxtDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();

@@ -1,10 +1,17 @@
+using System.Net;
+using System.Text.RegularExpressions;
+using Markdig;
 using Rag.Core.Abstractions;
 using Rag.Core.Models;
 
 namespace Rag.Core.Parsing;
 
-public sealed class MarkdownDocumentParser : IDocumentParser
+public sealed partial class MarkdownDocumentParser : IDocumentParser
 {
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
     public string Name => "markdown";
 
     public bool CanParse(string path, string? contentType = null)
@@ -19,6 +26,11 @@ public sealed class MarkdownDocumentParser : IDocumentParser
     {
         var markdown = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
         var metadata = ParserMetadata.ForFile(path, "text/markdown");
-        return new ParsedDocument(metadata.DocumentId, TextNormalizer.StripMarkdown(markdown), metadata);
+        var html = Markdown.ToHtml(markdown, Pipeline);
+        var plainText = HtmlTags().Replace(html, " ");
+        return new ParsedDocument(metadata.DocumentId, TextNormalizer.Normalize(WebUtility.HtmlDecode(plainText)), metadata);
     }
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex HtmlTags();
 }

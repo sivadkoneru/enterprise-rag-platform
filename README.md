@@ -6,7 +6,7 @@ This repository is currently being built from [plans/enterprise-rag-platform_202
 
 ## Stack
 
-- .NET 8 LTS target because `dotnet` is not available locally to validate .NET 10.
+- .NET 10 target, matching the SDK installed on this machine.
 - ASP.NET Core for the Web API.
 - System.CommandLine for the CLI.
 - Microsoft.Extensions.DependencyInjection, Configuration, Options, and Http.Resilience for composition, configuration, and outbound resilience.
@@ -107,7 +107,7 @@ Local verification note: `dotnet` is not available on this machine's PATH at the
 - The deterministic LLM provider is the default so local ingest/query flows can run without secrets.
 - OpenAI and Azure OpenAI can be selected with `LLM_PROVIDER=openai` or `LLM_PROVIDER=azure-openai` plus separate embedding and chat endpoint variables.
 - The Azure AI Search vector store is intentionally a stub, matching the plan's future-phase constraint.
-- `dotnet` is not available on this machine's PATH, so build and test verification still needs to be run on a workstation with the .NET SDK installed.
+- The SDK is installed at `/usr/local/share/dotnet/dotnet`; use that path directly if `dotnet` is not on `PATH`.
 
 ## Development Rules
 
