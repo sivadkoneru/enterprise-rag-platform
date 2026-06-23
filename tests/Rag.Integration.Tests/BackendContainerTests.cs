@@ -82,6 +82,49 @@ public sealed class BackendContainerTests
         results[0].ChunkId.Should().Be("chunk-a");
     }
 
+    [Fact]
+    public async Task PipelineIngestsAndQueriesThroughMongoAndElasticsearch()
+    {
+        await using var mongo = new ContainerBuilder()
+            .WithImage("mongo:7")
+            .WithPortBinding(27017, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017))
+            .Build();
+        await using var elasticsearch = new ContainerBuilder()
+            .WithImage("docker.elastic.co/elasticsearch/elasticsearch:8.15.0")
+            .WithEnvironment("discovery.type", "single-node")
+            .WithEnvironment("xpack.security.enabled", "false")
+            .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
+            .WithPortBinding(9200, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request.ForPort(9200).ForPath("/")))
+            .Build();
+        await mongo.StartAsync();
+        await elasticsearch.StartAsync();
+
+        var sample = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../samples/handbook.txt"));
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DOC_STORE"] = "mongo",
+                ["MONGO_CONNECTION_STRING"] = $"mongodb://localhost:{mongo.GetMappedPublicPort(27017)}",
+                ["MONGO_DATABASE"] = $"rag_{Guid.NewGuid():N}",
+                ["VECTOR_STORE"] = "elasticsearch",
+                ["ELASTICSEARCH_URI"] = $"http://localhost:{elasticsearch.GetMappedPublicPort(9200)}",
+                ["ELASTICSEARCH_INDEX"] = $"rag-{Guid.NewGuid():N}",
+                ["ELASTICSEARCH_VECTOR_DIMENSIONS"] = "64",
+                ["LLM_PROVIDER"] = "deterministic",
+                ["Llm:EmbeddingDimensions"] = "64"
+            })
+            .Build();
+        var services = new ServiceCollection().AddRagPlatform(config).BuildServiceProvider();
+
+        var ingestion = await services.GetRequiredService<IIngestionPipeline>().IngestAsync(new IngestionRequest(sample));
+        var answer = await services.GetRequiredService<IQueryPipeline>().QueryAsync(new QueryRequest("What is the refund policy?"));
+
+        ingestion.ChunkCount.Should().BeGreaterThan(0);
+        answer.Citations.Should().Contain(citation => citation.Source.EndsWith("handbook.txt", StringComparison.Ordinal));
+    }
+
     private sealed class SimpleHttpClientFactory : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
