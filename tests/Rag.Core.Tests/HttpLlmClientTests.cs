@@ -6,6 +6,7 @@ using Rag.Core.Configuration;
 using Rag.Core.Llm;
 using Rag.Core.Models;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Rag.Core.Tests;
 
@@ -15,7 +16,7 @@ public sealed class HttpLlmClientTests
     public async Task EmbedSendsExactlyOneRequestSoRetriesStayWithTheResiliencePipeline()
     {
         var handler = new RecordingHandler(_ => Json("""{"data":[{"embedding":[0.5,0.25]}]}"""));
-        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()));
+        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()), NullLogger<HttpLlmClient>.Instance);
 
         var embedding = await client.EmbedAsync("refund policy");
 
@@ -27,7 +28,7 @@ public sealed class HttpLlmClientTests
     public async Task CompleteReturnsTheFirstChoiceContent()
     {
         var handler = new RecordingHandler(_ => Json("""{"choices":[{"message":{"content":"grounded answer"}}]}"""));
-        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()));
+        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()), NullLogger<HttpLlmClient>.Instance);
 
         var answer = await client.CompleteAsync([new ChatMessage("user", "question")]);
 
@@ -42,7 +43,7 @@ public sealed class HttpLlmClientTests
         {
             Content = new StringContent("upstream exploded", Encoding.UTF8, "text/plain")
         });
-        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()));
+        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()), NullLogger<HttpLlmClient>.Instance);
 
         var act = () => client.EmbedAsync("refund policy");
 
@@ -56,7 +57,7 @@ public sealed class HttpLlmClientTests
     public async Task UnexpectedEmbeddingShapeFailsWithAnActionableMessage()
     {
         var handler = new RecordingHandler(_ => Json("""{"data":[]}"""));
-        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()));
+        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(EndpointOptions()), NullLogger<HttpLlmClient>.Instance);
 
         var act = () => client.EmbedAsync("refund policy");
 
@@ -67,7 +68,7 @@ public sealed class HttpLlmClientTests
     public async Task MissingEndpointIsReportedBeforeAnyRequestIsSent()
     {
         var handler = new RecordingHandler(_ => Json("{}"));
-        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(new LlmOptions { Provider = "openai" }));
+        var client = new HttpLlmClient(new StubHttpClientFactory(handler), Options.Create(new LlmOptions { Provider = "openai" }), NullLogger<HttpLlmClient>.Instance);
 
         var act = () => client.EmbedAsync("refund policy");
 

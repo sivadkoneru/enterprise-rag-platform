@@ -1,0 +1,267 @@
+using System.Text;
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Rag.Core.Configuration;
+using Rag.Core.DependencyInjection;
+using Xunit;
+
+namespace Rag.Core.Tests;
+
+public sealed class ConfigurationTests
+{
+    private static readonly string[] ExpectedRoots = ["/first", "/second"];
+
+    [Fact]
+    public void AddRagPlatformBindsHierarchicalJsonConfiguration()
+    {
+        const string json = """
+            {
+              "Rag": {
+                "ChunkingStrategy": "markdown"
+              },
+              "Chunking": {
+                "Size": 321,
+                "Overlap": 32,
+                "SemanticDistanceThreshold": 0.44
+              },
+              "Llm": {
+                "Provider": "openai",
+                "EmbeddingModel": "embed-json",
+                "ChatModel": "chat-json",
+                "TimeoutSeconds": 120,
+                "RetryCount": 5,
+                "RetryBackoffSeconds": 6
+              },
+              "DocumentStore": {
+                "Provider": "mongo",
+                "ConnectionString": "mongodb://json",
+                "DatabaseName": "jsondb",
+                "ContainerName": "jsonchunks"
+              },
+              "VectorStore": {
+                "Provider": "elasticsearch",
+                "Endpoint": "http://json-elastic:9200",
+                "IndexName": "json-index",
+                "Dimensions": 42
+              }
+            }
+            """;
+
+        using var services = BuildServicesFromJson(json);
+
+        services.GetRequiredService<IOptions<RagOptions>>().Value.ChunkingStrategy.Should().Be("markdown");
+        services.GetRequiredService<IOptions<ChunkingOptions>>().Value.Size.Should().Be(321);
+        services.GetRequiredService<IOptions<ChunkingOptions>>().Value.Overlap.Should().Be(32);
+        services.GetRequiredService<IOptions<ChunkingOptions>>().Value.SemanticDistanceThreshold.Should().Be(0.44);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.Provider.Should().Be("openai");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingModel.Should().Be("embed-json");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatModel.Should().Be("chat-json");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.TimeoutSeconds.Should().Be(120);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryCount.Should().Be(5);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryBackoffSeconds.Should().Be(6);
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.Provider.Should().Be("mongo");
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ConnectionString.Should().Be("mongodb://json");
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.DatabaseName.Should().Be("jsondb");
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ContainerName.Should().Be("jsonchunks");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Provider.Should().Be("elasticsearch");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Endpoint.Should().Be("http://json-elastic:9200");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.IndexName.Should().Be("json-index");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Dimensions.Should().Be(42);
+    }
+
+    [Fact]
+    public void AddRagPlatformLetsEnvironmentStyleKeysOverrideJsonSections()
+    {
+        const string json = """
+            {
+              "Rag": {
+                "ChunkingStrategy": "fixed"
+              },
+              "Llm": {
+                "Provider": "deterministic",
+                "EmbeddingModel": "embed-json"
+              },
+              "DocumentStore": {
+                "Provider": "memory",
+                "ConnectionString": "mongodb://json"
+              },
+              "VectorStore": {
+                "Provider": "memory",
+                "Endpoint": "http://json-elastic:9200",
+                "Dimensions": 10
+              }
+            }
+            """;
+        var configuration = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["CHUNKING_STRATEGY"] = "semantic",
+                ["LLM_PROVIDER"] = "openai",
+                ["LLM_API_KEY"] = "key-env",
+                ["LLM_EMBEDDING_ENDPOINT"] = "https://llm.example/embeddings",
+                ["LLM_EMBEDDING_MODEL"] = "embed-env",
+                ["LLM_CHAT_ENDPOINT"] = "https://llm.example/chat/completions",
+                ["LLM_CHAT_MODEL"] = "chat-env",
+                ["LLM_TIMEOUT_SECONDS"] = "180",
+                ["LLM_RETRY_COUNT"] = "4",
+                ["LLM_RETRY_BACKOFF_SECONDS"] = "5",
+                ["DOC_STORE"] = "mongo",
+                ["MONGO_CONNECTION_STRING"] = "mongodb://env",
+                ["VECTOR_STORE"] = "elasticsearch",
+                ["ELASTICSEARCH_URI"] = "http://env-elastic:9200",
+                ["ELASTICSEARCH_VECTOR_DIMENSIONS"] = "99"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        services.GetRequiredService<IOptions<RagOptions>>().Value.ChunkingStrategy.Should().Be("semantic");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.Provider.Should().Be("openai");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ApiKey.Should().Be("key-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingEndpoint.Should().Be("https://llm.example/embeddings");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingModel.Should().Be("embed-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatEndpoint.Should().Be("https://llm.example/chat/completions");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatModel.Should().Be("chat-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.TimeoutSeconds.Should().Be(180);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryCount.Should().Be(4);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryBackoffSeconds.Should().Be(5);
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.Provider.Should().Be("mongo");
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ConnectionString.Should().Be("mongodb://env");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Provider.Should().Be("elasticsearch");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Endpoint.Should().Be("http://env-elastic:9200");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Dimensions.Should().Be(99);
+    }
+
+    [Fact]
+    public void AzureOpenAiProviderUsesSameLlmEndpointKeys()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LLM_PROVIDER"] = "azure-openai",
+                ["LLM_API_KEY"] = "azure-key",
+                ["LLM_EMBEDDING_ENDPOINT"] = "https://example.openai.azure.com/openai/deployments/embed/embeddings?api-version=2024-10-21",
+                ["LLM_EMBEDDING_MODEL"] = "embed-deployment",
+                ["LLM_CHAT_ENDPOINT"] = "https://example.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21",
+                ["LLM_CHAT_MODEL"] = "chat-deployment"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<LlmOptions>>().Value;
+        options.Provider.Should().Be("azure-openai");
+        options.ApiKey.Should().Be("azure-key");
+        options.EmbeddingEndpoint.Should().Be("https://example.openai.azure.com/openai/deployments/embed/embeddings?api-version=2024-10-21");
+        options.EmbeddingModel.Should().Be("embed-deployment");
+        options.ChatEndpoint.Should().Be("https://example.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21");
+        options.ChatModel.Should().Be("chat-deployment");
+    }
+
+    [Fact]
+    public void LlmTimeoutSettingsCanFallBackToLegacyHttpKeys()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["HTTP_TIMEOUT_SECONDS"] = "90",
+                ["HTTP_RETRY_COUNT"] = "2",
+                ["HTTP_RETRY_BACKOFF_SECONDS"] = "7"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<LlmOptions>>().Value;
+        options.TimeoutSeconds.Should().Be(90);
+        options.RetryCount.Should().Be(2);
+        options.RetryBackoffSeconds.Should().Be(7);
+    }
+
+    [Fact]
+    public void StoreAndVectorCredentialKeysBindFromEnvironmentStyleConfiguration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["MONGO_DOCUMENTS_COLLECTION"] = "env-documents",
+                ["ELASTICSEARCH_USERNAME"] = "elastic",
+                ["ELASTICSEARCH_PASSWORD"] = "secret"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.DocumentsContainerName.Should().Be("env-documents");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Username.Should().Be("elastic");
+        services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Password.Should().Be("secret");
+    }
+
+    [Fact]
+    public void LocalSourceAllowedRootsDefaultToUnrestrictedAndBindFromEnvironmentStyleConfiguration()
+    {
+        using var unrestricted = new ServiceCollection()
+            .AddRagPlatform(new ConfigurationBuilder().Build())
+            .BuildServiceProvider();
+
+        unrestricted.GetRequiredService<IOptions<LocalSourceOptions>>().Value.AllowedRoots.Should().BeEmpty();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LocalSource:AllowedRoots:0"] = "/json/root",
+                ["LOCAL_SOURCE_ALLOWED_ROOTS"] = string.Join(Path.PathSeparator, "/first", "/second")
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        services.GetRequiredService<IOptions<LocalSourceOptions>>().Value.AllowedRoots
+            .Should().Equal(
+                ExpectedRoots,
+                "the flat environment key replaces configured roots rather than extending them");
+    }
+
+    [Fact]
+    public void LlmHttpClientSupportsLongAttemptTimeouts()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LLM_TIMEOUT_SECONDS"] = "180"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var createClient = () => services.GetRequiredService<IHttpClientFactory>().CreateClient("rag-llm");
+
+        createClient.Should().NotThrow();
+    }
+
+    private static ServiceProvider BuildServicesFromJson(string json)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .Build();
+
+        return new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+    }
+}

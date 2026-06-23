@@ -7,6 +7,7 @@ using Rag.Core.Pipelines;
 using Rag.Core.Stores;
 using Rag.Core.Vector;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Rag.Core.Tests;
 
@@ -70,7 +71,8 @@ public sealed class QueryPipelineTests
             chat,
             vectorStore,
             documentStore,
-            Options.Create(new LlmOptions { SystemPrompt = "Ground every answer." }));
+            Options.Create(new LlmOptions { SystemPrompt = "Ground every answer." }),
+            NullLogger<QueryPipeline>.Instance);
     }
 
     private static TextChunk Chunk(string id, int index, string text)

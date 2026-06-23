@@ -1,0 +1,2 @@
+Refunds are available within thirty days when the customer provides a receipt.
+Escalations should include the order number, customer identifier, and reason code.

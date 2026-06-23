@@ -6,6 +6,7 @@ using Rag.Core.Configuration;
 using Rag.Core.Models;
 using Rag.Core.Vector;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Rag.Core.Tests;
 
@@ -99,7 +100,8 @@ public sealed class ElasticsearchVectorStoreTests
                 IndexName = "rag-chunks",
                 Username = "elastic",
                 Password = "secret"
-            }));
+            }),
+            NullLogger<ElasticsearchVectorStore>.Instance);
 
         await store.UpsertAsync([new VectorRecord("chunk-a", "doc", [1, 0], new Dictionary<string, string>())]);
 
@@ -128,7 +130,8 @@ public sealed class ElasticsearchVectorStoreTests
                 Endpoint = "http://elastic.example:9200",
                 IndexName = "rag-chunks",
                 Dimensions = 2
-            }));
+            }),
+            NullLogger<ElasticsearchVectorStore>.Instance);
     }
 
     private static HttpResponseMessage Json(string payload)
