@@ -4,8 +4,13 @@ using Rag.Core.DependencyInjection;
 using Rag.Core.Models;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Configuration.AddInMemoryCollection(EnvFile.LoadFromWorkingDirectory());
-builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.Sources.Clear();
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddInMemoryCollection(EnvFile.LoadFromWorkingDirectory())
+    .AddEnvironmentVariables()
+    .AddCommandLine(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddRagPlatform(builder.Configuration);
