@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
+  </ItemGroup>
+</Project>
