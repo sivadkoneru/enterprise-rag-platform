@@ -1,3 +1,5 @@
+using Amazon;
+using Amazon.S3;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -5,9 +7,11 @@ using Microsoft.Extensions.Options;
 using Rag.Core.Abstractions;
 using Rag.Core.Chunking;
 using Rag.Core.Configuration;
+using Rag.Core.Jobs;
 using Rag.Core.Llm;
 using Rag.Core.Parsing;
 using Rag.Core.Pipelines;
+using Rag.Core.Sources;
 using Rag.Core.Stores;
 using Rag.Core.Vector;
 
@@ -36,12 +40,33 @@ public static class RagServiceCollectionExtensions
         {
             configuration.GetSection("Llm").Bind(options);
             options.Provider = configuration["LLM_PROVIDER"] ?? options.Provider;
-            options.ApiKey = configuration["OPENAI_API_KEY"] ?? configuration["AZURE_OPENAI_API_KEY"] ?? options.ApiKey;
-            options.EmbeddingEndpoint = configuration["OPENAI_EMBEDDING_ENDPOINT"] ?? configuration["AZURE_OPENAI_EMBEDDING_ENDPOINT"] ?? options.EmbeddingEndpoint;
-            options.EmbeddingModel = configuration["OPENAI_EMBEDDING_MODEL"] ?? configuration["AZURE_OPENAI_EMBEDDING_DEPLOYMENT"] ?? options.EmbeddingModel;
-            options.EmbeddingDimensions = Int(configuration["OPENAI_EMBEDDING_DIMENSIONS"] ?? configuration["AZURE_OPENAI_EMBEDDING_DIMENSIONS"], options.EmbeddingDimensions);
-            options.ChatEndpoint = configuration["OPENAI_CHAT_ENDPOINT"] ?? configuration["AZURE_OPENAI_CHAT_ENDPOINT"] ?? options.ChatEndpoint;
-            options.ChatModel = configuration["OPENAI_CHAT_MODEL"] ?? configuration["AZURE_OPENAI_CHAT_DEPLOYMENT"] ?? options.ChatModel;
+            options.ApiKey = configuration["LLM_API_KEY"] ?? options.ApiKey;
+            options.EmbeddingEndpoint = configuration["LLM_EMBEDDING_ENDPOINT"] ?? options.EmbeddingEndpoint;
+            options.EmbeddingModel = configuration["LLM_EMBEDDING_MODEL"] ?? options.EmbeddingModel;
+            options.EmbeddingDimensions = Int(configuration["LLM_EMBEDDING_DIMENSIONS"], options.EmbeddingDimensions);
+            options.ChatEndpoint = configuration["LLM_CHAT_ENDPOINT"] ?? options.ChatEndpoint;
+            options.ChatModel = configuration["LLM_CHAT_MODEL"] ?? options.ChatModel;
+            options.SystemPrompt = configuration["LLM_SYSTEM_PROMPT"] ?? options.SystemPrompt;
+        });
+        services.Configure<IngestionOptions>(options =>
+        {
+            configuration.GetSection("Ingestion").Bind(options);
+            options.MaxDegreeOfParallelism = Int(
+                configuration["INGESTION_MAX_DEGREE_OF_PARALLELISM"] ?? configuration["INGESTION_MAX_PARALLELISM"],
+                options.MaxDegreeOfParallelism);
+        });
+        services.Configure<S3Options>(options =>
+        {
+            configuration.GetSection("S3").Bind(options);
+            options.Region = configuration["S3_REGION"] ?? configuration["AWS_REGION"] ?? configuration["AWS_DEFAULT_REGION"] ?? options.Region;
+            options.ServiceUrl = configuration["S3_ENDPOINT"] ?? configuration["S3_SERVICE_URL"] ?? configuration["AWS_ENDPOINT_URL"] ?? options.ServiceUrl;
+            options.ForcePathStyle = Bool(configuration["S3_FORCE_PATH_STYLE"], options.ForcePathStyle);
+        });
+        services.Configure<AzureBlobOptions>(options =>
+        {
+            configuration.GetSection("AzureBlob").Bind(options);
+            options.ConnectionString = configuration["AZURE_BLOB_CONNECTION_STRING"] ?? options.ConnectionString;
+            options.ServiceUri = configuration["AZURE_BLOB_SERVICE_URI"] ?? configuration["AZURE_BLOB_ENDPOINT"] ?? options.ServiceUri;
         });
         services.Configure<DocumentStoreOptions>(options =>
         {
@@ -65,10 +90,35 @@ public static class RagServiceCollectionExtensions
         services.AddHttpClient("rag-llm").AddStandardResilienceHandler();
         services.AddHttpClient("rag-elasticsearch").AddStandardResilienceHandler();
 
+        services.AddSingleton<IAmazonS3>(sp =>
+        {
+            var s3Options = sp.GetRequiredService<IOptions<S3Options>>().Value;
+            var config = new AmazonS3Config
+            {
+                ForcePathStyle = s3Options.ForcePathStyle
+            };
+            if (!string.IsNullOrWhiteSpace(s3Options.Region))
+            {
+                config.RegionEndpoint = RegionEndpoint.GetBySystemName(s3Options.Region);
+            }
+
+            if (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl))
+            {
+                config.ServiceURL = s3Options.ServiceUrl;
+            }
+
+            return new AmazonS3Client(config);
+        });
+
         services.AddSingleton<IDocumentParser, TxtDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
         services.AddSingleton<IDocumentParser, PdfDocumentParser>();
         services.AddSingleton<IDocumentParserResolver, DocumentParserResolver>();
+
+        services.AddSingleton<IDocumentSource, LocalDirectorySource>();
+        services.AddSingleton<IDocumentSource, AwsS3DocumentSource>();
+        services.AddSingleton<IDocumentSource, AzureBlobDocumentSource>();
+        services.AddSingleton<IDocumentSourceResolver, DocumentSourceResolver>();
 
         services.AddSingleton<IChunkingStrategy, FixedChunkingStrategy>();
         services.AddSingleton<IChunkingStrategy, RecursiveChunkingStrategy>();
@@ -96,6 +146,9 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IIngestionPipeline, IngestionPipeline>();
         services.AddSingleton<IQueryPipeline, QueryPipeline>();
         services.AddSingleton<IChunkPreviewService, ChunkPreviewService>();
+        services.AddSingleton<IIngestionJobStore, InMemoryIngestionJobStore>();
+        services.AddSingleton<IIngestionJobQueue, IngestionJobQueue>();
+        services.AddHostedService<IngestionBackgroundService>();
 
         return services;
     }

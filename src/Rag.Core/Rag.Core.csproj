@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="Azure.AI.OpenAI" />
+    <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Elastic.Clients.Elasticsearch" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />

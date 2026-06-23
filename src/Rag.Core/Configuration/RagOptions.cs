@@ -33,6 +33,29 @@ public sealed class LlmOptions
     public string? ChatEndpoint { get; set; }
 
     public string? ChatModel { get; set; }
+
+    public string SystemPrompt { get; set; } = "Answer only from the supplied context. If the answer is not present, say you don't know. Always cite sources when context is used.";
+}
+
+public sealed class IngestionOptions
+{
+    public int MaxDegreeOfParallelism { get; set; } = 4;
+}
+
+public sealed class S3Options
+{
+    public string? Region { get; set; } = "us-east-1";
+
+    public string? ServiceUrl { get; set; }
+
+    public bool ForcePathStyle { get; set; } = true;
+}
+
+public sealed class AzureBlobOptions
+{
+    public string? ConnectionString { get; set; }
+
+    public string? ServiceUri { get; set; }
 }
 
 public sealed class DocumentStoreOptions

@@ -15,7 +15,11 @@ public sealed class AzureAiSearchVectorStoreStub : IAzureAiSearchVectorStore
         throw new NotImplementedException("Azure AI Search is intentionally stubbed for a future phase.");
     }
 
-    public Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
+        IReadOnlyList<float> queryVector,
+        int topK,
+        VectorSearchFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException("Azure AI Search is intentionally stubbed for a future phase.");
     }

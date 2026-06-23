@@ -58,18 +58,17 @@ public sealed class ElasticsearchVectorStore(IHttpClientFactory httpClientFactor
         refresh.EnsureSuccessStatusCode();
     }
 
-    public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
+        IReadOnlyList<float> queryVector,
+        int topK,
+        VectorSearchFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
         var client = Client();
+        var filterClauses = BuildFilter(filter);
         var payload = new
         {
-            knn = new
-            {
-                field = "vector",
-                query_vector = queryVector,
-                k = Math.Max(1, topK),
-                num_candidates = Math.Max(10, topK * 10)
-            },
+            knn = BuildKnn(queryVector, topK, filterClauses),
             _source = new[] { "chunkId", "documentId" }
         };
 
@@ -89,6 +88,64 @@ public sealed class ElasticsearchVectorStore(IHttpClientFactory httpClientFactor
         }
 
         return results;
+    }
+
+    private static object BuildKnn(IReadOnlyList<float> queryVector, int topK, object[]? filter)
+    {
+        var k = Math.Max(1, topK);
+        var candidates = Math.Max(10, topK * 10);
+        return filter is { Length: > 0 }
+            ? new
+            {
+                field = "vector",
+                query_vector = queryVector,
+                k,
+                num_candidates = candidates,
+                filter
+            }
+            : new
+            {
+                field = "vector",
+                query_vector = queryVector,
+                k,
+                num_candidates = candidates
+            };
+    }
+
+    private static object[]? BuildFilter(VectorSearchFilter? filter)
+    {
+        if (filter is null)
+        {
+            return null;
+        }
+
+        var filters = new List<object>();
+        AddTerms(filters, "documentId", filter.DocumentIds);
+        AddTerms(filters, "metadata.source.keyword", filter.Sources);
+        AddTerms(filters, "metadata.origin.keyword", filter.Origins);
+        AddTerms(filters, "metadata.fileType.keyword", NormalizeFileTypes(filter.FileTypes));
+        return filters.Count == 0 ? null : filters.ToArray();
+    }
+
+    private static void AddTerms(ICollection<object> filters, string field, IReadOnlyList<string>? values)
+    {
+        if (values is not { Count: > 0 })
+        {
+            return;
+        }
+
+        filters.Add(new
+        {
+            terms = new Dictionary<string, IReadOnlyList<string>>
+            {
+                [field] = values
+            }
+        });
+    }
+
+    private static IReadOnlyList<string>? NormalizeFileTypes(IReadOnlyList<string>? fileTypes)
+    {
+        return fileTypes?.Select(type => type.StartsWith('.') ? type : $".{type}").ToArray();
     }
 
     private HttpClient Client()

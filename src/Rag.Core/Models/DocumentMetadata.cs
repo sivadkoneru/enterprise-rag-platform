@@ -8,4 +8,5 @@ public sealed record DocumentMetadata(
     string ContentType,
     long Length,
     DateTimeOffset IngestedAt,
-    IReadOnlyDictionary<string, string>? Attributes = null);
+    IReadOnlyDictionary<string, string>? Attributes = null,
+    string Origin = "file");
