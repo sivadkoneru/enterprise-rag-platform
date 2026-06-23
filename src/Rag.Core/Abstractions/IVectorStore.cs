@@ -8,5 +8,9 @@ public interface IVectorStore
 
     Task UpsertAsync(IReadOnlyList<VectorRecord> records, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
+        IReadOnlyList<float> queryVector,
+        int topK,
+        VectorSearchFilter? filter = null,
+        CancellationToken cancellationToken = default);
 }

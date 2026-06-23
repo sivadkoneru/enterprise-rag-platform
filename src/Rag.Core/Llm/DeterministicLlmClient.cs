@@ -29,10 +29,35 @@ public sealed class DeterministicLlmClient(IOptions<LlmOptions> options) : IEmbe
     {
         cancellationToken.ThrowIfCancellationRequested();
         var context = messages.LastOrDefault(message => message.Role == "user")?.Content ?? string.Empty;
-        var answer = context.Length == 0
-            ? "No question was provided."
-            : $"Based on the retrieved context, {FirstSentence(context)}";
+        var answer = HasContext(context)
+            ? $"Based on the retrieved context, {FirstContextSentence(context)}"
+            : "I don't know based on the supplied context.";
         return Task.FromResult(answer);
+    }
+
+    private static bool HasContext(string prompt)
+    {
+        var marker = prompt.IndexOf("Context:", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0)
+        {
+            return false;
+        }
+
+        var context = prompt[(marker + "Context:".Length)..].Trim();
+        return context.Length > 0;
+    }
+
+    private static string FirstContextSentence(string input)
+    {
+        var contextIndex = input.IndexOf("Context:", StringComparison.OrdinalIgnoreCase);
+        var context = contextIndex < 0 ? input : input[(contextIndex + "Context:".Length)..].Trim();
+        var firstContentLine = context
+            .Split(["\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(line => !line.StartsWith("[", StringComparison.Ordinal));
+        var selected = string.IsNullOrWhiteSpace(firstContentLine) ? context : firstContentLine;
+        return selected.Length == 0
+            ? "I don't know based on the supplied context."
+            : FirstSentence(selected);
     }
 
     private static IEnumerable<string> Tokenize(string input)
