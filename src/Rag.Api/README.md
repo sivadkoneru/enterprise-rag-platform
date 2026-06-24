@@ -6,6 +6,10 @@ ASP.NET Core Web API for the RAG platform.
 
 Expose ingestion, ingestion job status, chunk preview, query, and health endpoints over the core platform services.
 
+## Swagger UI
+
+Swagger UI is enabled by default at `/swagger` when the API runs. The root path `/` redirects to the Swagger UI, and the OpenAPI JSON document is available at `/swagger/v1/swagger.json`.
+
 ## Endpoints
 
 - `POST /documents`

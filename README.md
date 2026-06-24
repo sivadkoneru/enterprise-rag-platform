@@ -95,6 +95,9 @@ Common options:
 | `LLM_CHAT_ENDPOINT` | Chat completion endpoint URL. |
 | `LLM_CHAT_MODEL` | Chat model/deployment name. |
 | `LLM_SYSTEM_PROMPT` | Grounding prompt sent on every chat call. |
+| `LLM_TIMEOUT_SECONDS` | HTTP LLM timeout per attempt. |
+| `LLM_RETRY_COUNT` | HTTP LLM retry attempts. |
+| `LLM_RETRY_BACKOFF_SECONDS` | HTTP LLM retry backoff. |
 | `INGESTION_MAX_PARALLELISM` | Maximum concurrent source items processed by background ingestion. |
 | `JOB_STORE` | Ingestion job status backend: `memory` or `mongo`. |
 | `MONGO_JOBS_COLLECTION` | MongoDB collection for persistent ingestion jobs when `JOB_STORE=mongo`. |

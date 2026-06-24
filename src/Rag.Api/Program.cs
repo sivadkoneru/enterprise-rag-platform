@@ -1,3 +1,4 @@
+using Microsoft.OpenApi.Models;
 using Rag.Core.Abstractions;
 using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
@@ -18,15 +19,32 @@ if (!string.IsNullOrWhiteSpace(configuredUrls))
 }
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Enterprise RAG API",
+        Version = "v1",
+        Description = "Minimal API for document ingestion, ingestion jobs, chunk previews, and grounded RAG queries."
+    });
+});
 builder.Services.AddRagPlatform(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(options =>
+{
+    options.DocumentTitle = "Enterprise RAG API";
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Enterprise RAG API v1");
+});
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "rag-api" }));
+app.MapGet("/", () => Results.Redirect("/swagger"))
+    .ExcludeFromDescription();
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "rag-api" }))
+    .WithName("HealthCheck")
+    .WithTags("Health");
 
 app.MapPost("/documents", async (ApiIngestionRequest request, IIngestionJobQueue queue, CancellationToken cancellationToken) =>
 {
@@ -41,13 +59,17 @@ app.MapPost("/documents", async (ApiIngestionRequest request, IIngestionJobQueue
 
     var job = await queue.EnqueueAsync(new IngestionRequest(Strategy: request.Strategy, Sources: sources), cancellationToken).ConfigureAwait(false);
     return Results.Accepted($"/jobs/{job.Id}", new { jobId = job.Id, status = job.Status.ToString() });
-});
+})
+    .WithName("EnqueueDocuments")
+    .WithTags("Documents");
 
 app.MapGet("/jobs/{id}", async (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
 {
     var job = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
     return job is null ? Results.NotFound() : Results.Ok(job.ToStatusResponse());
-});
+})
+    .WithName("GetJob")
+    .WithTags("Jobs");
 
 app.MapPost("/jobs/{id}/pause", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
 {
@@ -59,7 +81,9 @@ app.MapPost("/jobs/{id}/pause", async Task<IResult> (string id, IIngestionJobSto
 
     var job = await store.MarkPausedAsync(id, cancellationToken).ConfigureAwait(false);
     return Results.Ok((job ?? existing).ToStatusResponse());
-});
+})
+    .WithName("PauseJob")
+    .WithTags("Jobs");
 
 app.MapPost("/jobs/{id}/cancel", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
 {
@@ -71,7 +95,9 @@ app.MapPost("/jobs/{id}/cancel", async Task<IResult> (string id, IIngestionJobSt
 
     var job = await store.MarkCanceledAsync(id, cancellationToken).ConfigureAwait(false);
     return Results.Ok((job ?? existing).ToStatusResponse());
-});
+})
+    .WithName("CancelJob")
+    .WithTags("Jobs");
 
 app.MapPost("/jobs/{id}/resume", async Task<IResult> (string id, IIngestionJobStore store, IIngestionJobQueue queue, CancellationToken cancellationToken) =>
 {
@@ -93,19 +119,25 @@ app.MapPost("/jobs/{id}/resume", async Task<IResult> (string id, IIngestionJobSt
     }
 
     return Results.Ok((job ?? existing).ToStatusResponse());
-});
+})
+    .WithName("ResumeJob")
+    .WithTags("Jobs");
 
 app.MapPost("/chunk/preview", async (ChunkPreviewRequest request, IChunkPreviewService previewService, CancellationToken cancellationToken) =>
 {
     var result = await previewService.PreviewAsync(request.Path, cancellationToken).ConfigureAwait(false);
     return Results.Ok(result);
-});
+})
+    .WithName("PreviewChunks")
+    .WithTags("Chunks");
 
 app.MapPost("/query", async (ApiQueryRequest request, IQueryPipeline pipeline, CancellationToken cancellationToken) =>
 {
     var answer = await pipeline.QueryAsync(new QueryRequest(request.Question, request.TopK, request.Filter?.ToCoreFilter()), cancellationToken).ConfigureAwait(false);
     return Results.Ok(answer);
-});
+})
+    .WithName("Query")
+    .WithTags("Query");
 
 app.Run();
 
