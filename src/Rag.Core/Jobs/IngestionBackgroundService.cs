@@ -29,12 +29,26 @@ public sealed class IngestionBackgroundService(
                 }
 
                 var progress = new JobStoreProgress(job.Id, jobStore);
-                var result = await pipeline.IngestAsync(acquired.Request, progress, stoppingToken).ConfigureAwait(false);
+                var result = await pipeline.IngestAsync(
+                    acquired.Request,
+                    progress,
+                    token => CurrentStatusAsync(job.Id, token),
+                    stoppingToken).ConfigureAwait(false);
                 await jobStore.MarkSucceededAsync(job.Id, result, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (IngestionJobPausedException)
+            {
+                logger.LogInformation("Ingestion job {JobId} paused.", job.Id);
+                await jobStore.MarkPausedAsync(job.Id, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (IngestionJobCanceledException)
+            {
+                logger.LogInformation("Ingestion job {JobId} canceled.", job.Id);
+                await jobStore.MarkCanceledAsync(job.Id, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -42,6 +56,12 @@ public sealed class IngestionBackgroundService(
                 await jobStore.MarkFailedAsync(job.Id, exception.Message, CancellationToken.None).ConfigureAwait(false);
             }
         }
+    }
+
+    private async Task<IngestionJobStatus> CurrentStatusAsync(string jobId, CancellationToken cancellationToken)
+    {
+        var job = await jobStore.GetAsync(jobId, cancellationToken).ConfigureAwait(false);
+        return job?.Status ?? IngestionJobStatus.Canceled;
     }
 
     private async Task RecoverRestartableJobsAsync(CancellationToken cancellationToken)

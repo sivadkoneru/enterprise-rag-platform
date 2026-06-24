@@ -49,6 +49,52 @@ app.MapGet("/jobs/{id}", async (string id, IIngestionJobStore store, Cancellatio
     return job is null ? Results.NotFound() : Results.Ok(job.ToStatusResponse());
 });
 
+app.MapPost("/jobs/{id}/pause", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    var job = await store.MarkPausedAsync(id, cancellationToken).ConfigureAwait(false);
+    return Results.Ok((job ?? existing).ToStatusResponse());
+});
+
+app.MapPost("/jobs/{id}/cancel", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    var job = await store.MarkCanceledAsync(id, cancellationToken).ConfigureAwait(false);
+    return Results.Ok((job ?? existing).ToStatusResponse());
+});
+
+app.MapPost("/jobs/{id}/resume", async Task<IResult> (string id, IIngestionJobStore store, IIngestionJobQueue queue, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (existing.Status != IngestionJobStatus.Paused)
+    {
+        return Results.Ok(existing.ToStatusResponse());
+    }
+
+    var job = await store.MarkQueuedAsync(id, cancellationToken).ConfigureAwait(false);
+    if (job is not null && job.Status == IngestionJobStatus.Queued)
+    {
+        await queue.EnqueueExistingAsync(job, cancellationToken).ConfigureAwait(false);
+    }
+
+    return Results.Ok((job ?? existing).ToStatusResponse());
+});
+
 app.MapPost("/chunk/preview", async (ChunkPreviewRequest request, IChunkPreviewService previewService, CancellationToken cancellationToken) =>
 {
     var result = await previewService.PreviewAsync(request.Path, cancellationToken).ConfigureAwait(false);
@@ -128,8 +174,6 @@ internal static class IngestionJobApiExtensions
             chunkCount = job.ChunkCount,
             totalSourceCount = job.TotalSourceCount,
             processedSourceCount = job.ProcessedSourceCount,
-            documentIds = job.DocumentIds ?? [],
-            chunkIds = job.ChunkIds ?? [],
             currentSource = job.CurrentSource,
             workerId = job.WorkerId,
             error = job.Error,

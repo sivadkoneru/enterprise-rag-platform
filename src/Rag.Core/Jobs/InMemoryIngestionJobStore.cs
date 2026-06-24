@@ -103,6 +103,75 @@ public sealed class InMemoryIngestionJobStore : IIngestionJobStore
         return Task.CompletedTask;
     }
 
+    public Task<IngestionJob?> MarkPausedAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var now = DateTimeOffset.UtcNow;
+        IngestionJob? updated = null;
+        Update(jobId, job =>
+        {
+            updated = IsTerminal(job.Status)
+                ? job
+                : job with
+                {
+                    Status = IngestionJobStatus.Paused,
+                    WorkerId = null,
+                    CurrentSource = null,
+                    Error = null,
+                    UpdatedAt = now
+                };
+            return updated;
+        });
+        return Task.FromResult(updated);
+    }
+
+    public Task<IngestionJob?> MarkCanceledAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var now = DateTimeOffset.UtcNow;
+        IngestionJob? updated = null;
+        Update(jobId, job =>
+        {
+            updated = IsTerminal(job.Status)
+                ? job
+                : job with
+                {
+                    Status = IngestionJobStatus.Canceled,
+                    WorkerId = null,
+                    CurrentSource = null,
+                    Error = null,
+                    UpdatedAt = now,
+                    CompletedAt = now
+                };
+            return updated;
+        });
+        return Task.FromResult(updated);
+    }
+
+    public Task<IngestionJob?> MarkQueuedAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var now = DateTimeOffset.UtcNow;
+        IngestionJob? updated = null;
+        Update(jobId, job =>
+        {
+            updated = job.Status == IngestionJobStatus.Paused
+                ? job with
+                {
+                    Status = IngestionJobStatus.Queued,
+                    WorkerId = null,
+                    CurrentSource = null,
+                    Error = null,
+                    UpdatedAt = now,
+                    StartedAt = null,
+                    CompletedAt = null
+                }
+                : job;
+            return updated;
+        });
+        return Task.FromResult(updated);
+    }
+
     public Task<IReadOnlyList<IngestionJob>> GetRestartableJobsAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -152,5 +221,10 @@ public sealed class InMemoryIngestionJobStore : IIngestionJobStore
     private static DateTimeOffset Now(DateTimeOffset value)
     {
         return value == default ? DateTimeOffset.UtcNow : value;
+    }
+
+    private static bool IsTerminal(IngestionJobStatus status)
+    {
+        return status is IngestionJobStatus.Canceled or IngestionJobStatus.Succeeded or IngestionJobStatus.Failed;
     }
 }

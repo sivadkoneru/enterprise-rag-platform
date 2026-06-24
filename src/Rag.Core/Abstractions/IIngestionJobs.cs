@@ -18,6 +18,12 @@ public interface IIngestionJobStore
 
     Task MarkFailedAsync(string jobId, string error, CancellationToken cancellationToken = default);
 
+    Task<IngestionJob?> MarkPausedAsync(string jobId, CancellationToken cancellationToken = default);
+
+    Task<IngestionJob?> MarkCanceledAsync(string jobId, CancellationToken cancellationToken = default);
+
+    Task<IngestionJob?> MarkQueuedAsync(string jobId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<IngestionJob>> GetRestartableJobsAsync(CancellationToken cancellationToken = default);
 
     Task<IngestionJob?> TryAcquireAsync(string jobId, string workerId, CancellationToken cancellationToken = default);

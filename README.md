@@ -163,7 +163,8 @@ dotnet run --project src/Rag.Api
 
 - `GET /health` returns service health.
 - `POST /documents` enqueues ingestion for one or more `file`, `s3`, or `azureblob` sources and returns `202 Accepted` with a `jobId`.
-- `GET /jobs/{id}` returns queued/running/succeeded/failed ingestion job state, counts, document ids, and any error.
+- `GET /jobs/{id}` returns queued/running/succeeded/failed ingestion job state, compact progress counts, and any error.
+- `POST /jobs/{id}/pause`, `/cancel`, and `/resume` provide cooperative job control between source items.
 - `POST /chunk/preview` previews all chunking strategies for a document path.
 - `POST /query` runs retrieval and answer generation using `QueryRequest`; scoped filters can target `sources`, `origins`, `documentIds`, and `fileTypes`.
 

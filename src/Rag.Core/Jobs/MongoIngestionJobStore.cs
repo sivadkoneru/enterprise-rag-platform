@@ -123,6 +123,71 @@ public sealed class MongoIngestionJobStore : IIngestionJobStore
         await _jobs.UpdateOneAsync(item => item.Id == jobId, update, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IngestionJob?> MarkPausedAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await EnsureIndexesAsync(cancellationToken).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        var filter = ActiveJobFilter(jobId);
+        var update = Builders<MongoIngestionJobDocument>.Update
+            .Set(item => item.Status, IngestionJobStatus.Paused.ToString())
+            .Set(item => item.WorkerId, null)
+            .Set(item => item.CurrentSource, null)
+            .Set(item => item.Error, null)
+            .Set(item => item.UpdatedAt, now);
+        var updated = await _jobs.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<MongoIngestionJobDocument> { ReturnDocument = ReturnDocument.After },
+            cancellationToken).ConfigureAwait(false);
+        return updated?.ToJob() ?? await GetAsync(jobId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionJob?> MarkCanceledAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await EnsureIndexesAsync(cancellationToken).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        var filter = ActiveJobFilter(jobId);
+        var update = Builders<MongoIngestionJobDocument>.Update
+            .Set(item => item.Status, IngestionJobStatus.Canceled.ToString())
+            .Set(item => item.WorkerId, null)
+            .Set(item => item.CurrentSource, null)
+            .Set(item => item.Error, null)
+            .Set(item => item.UpdatedAt, now)
+            .Set(item => item.CompletedAt, now);
+        var updated = await _jobs.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<MongoIngestionJobDocument> { ReturnDocument = ReturnDocument.After },
+            cancellationToken).ConfigureAwait(false);
+        return updated?.ToJob() ?? await GetAsync(jobId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionJob?> MarkQueuedAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await EnsureIndexesAsync(cancellationToken).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        var filter = Builders<MongoIngestionJobDocument>.Filter.And(
+            Builders<MongoIngestionJobDocument>.Filter.Eq(item => item.Id, jobId),
+            Builders<MongoIngestionJobDocument>.Filter.Eq(item => item.Status, IngestionJobStatus.Paused.ToString()));
+        var update = Builders<MongoIngestionJobDocument>.Update
+            .Set(item => item.Status, IngestionJobStatus.Queued.ToString())
+            .Set(item => item.WorkerId, null)
+            .Set(item => item.CurrentSource, null)
+            .Set(item => item.Error, null)
+            .Set(item => item.UpdatedAt, now)
+            .Set(item => item.StartedAt, null)
+            .Set(item => item.CompletedAt, null);
+        var updated = await _jobs.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<MongoIngestionJobDocument> { ReturnDocument = ReturnDocument.After },
+            cancellationToken).ConfigureAwait(false);
+        return updated?.ToJob() ?? await GetAsync(jobId, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<IngestionJob>> GetRestartableJobsAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -160,6 +225,19 @@ public sealed class MongoIngestionJobStore : IIngestionJobStore
             },
             cancellationToken).ConfigureAwait(false);
         return acquired?.ToJob();
+    }
+
+    private static FilterDefinition<MongoIngestionJobDocument> ActiveJobFilter(string jobId)
+    {
+        var terminalStatuses = new[]
+        {
+            IngestionJobStatus.Canceled.ToString(),
+            IngestionJobStatus.Succeeded.ToString(),
+            IngestionJobStatus.Failed.ToString()
+        };
+        return Builders<MongoIngestionJobDocument>.Filter.And(
+            Builders<MongoIngestionJobDocument>.Filter.Eq(item => item.Id, jobId),
+            Builders<MongoIngestionJobDocument>.Filter.Nin(item => item.Status, terminalStatuses));
     }
 
     private async Task EnsureIndexesAsync(CancellationToken cancellationToken)

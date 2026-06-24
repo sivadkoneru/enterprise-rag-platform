@@ -25,6 +25,15 @@ public sealed class IngestionPipeline(
         IProgress<IngestionProgress>? progress,
         CancellationToken cancellationToken = default)
     {
+        return await IngestAsync(request, progress, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        Func<CancellationToken, Task<IngestionJobStatus>>? statusProvider,
+        CancellationToken cancellationToken = default)
+    {
         var allChunkIds = new List<string>();
         var allDocumentIds = new List<string>();
         var processedSourceCount = 0;
@@ -37,6 +46,7 @@ public sealed class IngestionPipeline(
         }
 
         await vectorStore.EnsureIndexAsync(cancellationToken).ConfigureAwait(false);
+        await ThrowIfJobStoppedAsync(statusProvider, cancellationToken).ConfigureAwait(false);
         var sourceItems = new List<SourceItem>();
         try
         {
@@ -60,6 +70,7 @@ public sealed class IngestionPipeline(
                 },
                 async (item, token) =>
                 {
+                    await ThrowIfJobStoppedAsync(statusProvider, token).ConfigureAwait(false);
                     var result = await IngestItemAsync(item, strategy, token).ConfigureAwait(false);
                     lock (allChunkIds)
                     {
@@ -76,6 +87,8 @@ public sealed class IngestionPipeline(
                         processedSourceCount++;
                         ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, item.Source);
                     }
+
+                    await ThrowIfJobStoppedAsync(statusProvider, token).ConfigureAwait(false);
                 }).ConfigureAwait(false);
         }
         finally
@@ -86,6 +99,7 @@ public sealed class IngestionPipeline(
             }
         }
 
+        await ThrowIfJobStoppedAsync(statusProvider, cancellationToken).ConfigureAwait(false);
         ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, null);
         return new IngestionResult(allDocumentIds.LastOrDefault() ?? string.Empty, allChunkIds.Count, strategy.Name, allChunkIds, allDocumentIds);
     }
@@ -214,6 +228,27 @@ public sealed class IngestionPipeline(
     private static string FileType(string extension)
     {
         return extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension.ToLowerInvariant()}";
+    }
+
+    private static async Task ThrowIfJobStoppedAsync(
+        Func<CancellationToken, Task<IngestionJobStatus>>? statusProvider,
+        CancellationToken cancellationToken)
+    {
+        if (statusProvider is null)
+        {
+            return;
+        }
+
+        var status = await statusProvider(cancellationToken).ConfigureAwait(false);
+        if (status == IngestionJobStatus.Paused)
+        {
+            throw new IngestionJobPausedException();
+        }
+
+        if (status == IngestionJobStatus.Canceled)
+        {
+            throw new IngestionJobCanceledException();
+        }
     }
 
     private static void ReportProgress(

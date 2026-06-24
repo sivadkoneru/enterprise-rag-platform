@@ -4,6 +4,8 @@ public enum IngestionJobStatus
 {
     Queued,
     Running,
+    Paused,
+    Canceled,
     Succeeded,
     Failed
 }
@@ -35,3 +37,19 @@ public sealed record IngestionProgress(
     IReadOnlyList<string> ChunkIds,
     string? CurrentSource,
     DateTimeOffset UpdatedAt);
+
+public sealed class IngestionJobPausedException : Exception
+{
+    public IngestionJobPausedException()
+        : base("Ingestion job was paused.")
+    {
+    }
+}
+
+public sealed class IngestionJobCanceledException : Exception
+{
+    public IngestionJobCanceledException()
+        : base("Ingestion job was canceled.")
+    {
+    }
+}

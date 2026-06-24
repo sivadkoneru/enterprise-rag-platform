@@ -53,7 +53,7 @@ public sealed class AsyncIngestionContractTests
             "Rag.Core.Pipelines.IngestionJobQueue");
 
         statusType.IsEnum.Should().BeTrue("job status should be a closed set of states");
-        Enum.GetNames(statusType).Should().Contain(["Queued", "Running", "Succeeded", "Failed"]);
+        Enum.GetNames(statusType).Should().Contain(["Queued", "Running", "Paused", "Canceled", "Succeeded", "Failed"]);
         jobType.GetProperty("Status").Should().NotBeNull();
         jobType.GetProperty("DocumentCount").Should().NotBeNull();
         jobType.GetProperty("ChunkCount").Should().NotBeNull();
@@ -68,6 +68,9 @@ public sealed class AsyncIngestionContractTests
         storeType.GetMethods().Should().Contain(method => method.Name == "UpdateProgressAsync");
         storeType.GetMethods().Should().Contain(method => method.Name == "GetRestartableJobsAsync");
         storeType.GetMethods().Should().Contain(method => method.Name == "TryAcquireAsync");
+        storeType.GetMethods().Should().Contain(method => method.Name == "MarkPausedAsync");
+        storeType.GetMethods().Should().Contain(method => method.Name == "MarkCanceledAsync");
+        storeType.GetMethods().Should().Contain(method => method.Name == "MarkQueuedAsync");
         queueType.Should().NotBeNull("the background Channel queue should have a public registration point for API/CLI orchestration");
     }
 
@@ -194,6 +197,10 @@ public sealed class AsyncIngestionContractTests
         var queued = await store.CreateAsync(new IngestionRequest(Path: "./queued"));
         var running = await store.CreateAsync(new IngestionRequest(Path: "./running"));
         await store.MarkRunningAsync(running.Id);
+        var paused = await store.CreateAsync(new IngestionRequest(Path: "./paused"));
+        await store.MarkPausedAsync(paused.Id);
+        var canceled = await store.CreateAsync(new IngestionRequest(Path: "./canceled"));
+        await store.MarkCanceledAsync(canceled.Id);
         var failed = await store.CreateAsync(new IngestionRequest(Path: "./failed"));
         await store.MarkFailedAsync(failed.Id, "bad");
 
@@ -206,6 +213,28 @@ public sealed class AsyncIngestionContractTests
 
         var secondAcquire = await store.TryAcquireAsync(queued.Id, "worker-b");
         secondAcquire.Should().BeNull("a running job should not be acquired twice");
+    }
+
+    [Fact]
+    public async Task InMemoryJobStorePausesCancelsAndResumesJobs()
+    {
+        var store = new InMemoryIngestionJobStore();
+        var job = await store.CreateAsync(new IngestionRequest(Path: "./source"));
+        await store.MarkRunningAsync(job.Id);
+
+        var paused = await store.MarkPausedAsync(job.Id);
+        paused!.Status.Should().Be(IngestionJobStatus.Paused);
+        paused.WorkerId.Should().BeNull();
+
+        var resumed = await store.MarkQueuedAsync(job.Id);
+        resumed!.Status.Should().Be(IngestionJobStatus.Queued);
+
+        var canceled = await store.MarkCanceledAsync(job.Id);
+        canceled!.Status.Should().Be(IngestionJobStatus.Canceled);
+        canceled.CompletedAt.Should().NotBeNull();
+
+        var afterCancelPause = await store.MarkPausedAsync(job.Id);
+        afterCancelPause!.Status.Should().Be(IngestionJobStatus.Canceled, "terminal jobs should not be paused again");
     }
 
     [Fact]
@@ -264,6 +293,32 @@ public sealed class AsyncIngestionContractTests
             progress.Values.Last().ProcessedSourceCount.Should().Be(2);
             progress.Values.Last().DocumentCount.Should().Be(2);
             progress.Values.Last().ChunkCount.Should().Be(2);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task IngestionPipelineStopsWhenControlStatusIsPaused()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"rag-paused-source-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "first.txt"), "Alpha progress.");
+
+        try
+        {
+            using var services = new ServiceCollection()
+                .AddRagPlatform(new ConfigurationBuilder().Build())
+                .BuildServiceProvider();
+
+            var act = async () => await services.GetRequiredService<IIngestionPipeline>().IngestAsync(
+                new IngestionRequest(directory),
+                null,
+                _ => Task.FromResult(IngestionJobStatus.Paused));
+
+            await act.Should().ThrowAsync<IngestionJobPausedException>();
         }
         finally
         {
