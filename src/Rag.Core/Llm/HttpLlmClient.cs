@@ -1,17 +1,20 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rag.Core.Abstractions;
+using Rag.Core.Common;
 using Rag.Core.Configuration;
 using Rag.Core.Models;
 
 namespace Rag.Core.Llm;
 
-public sealed class HttpLlmClient(IHttpClientFactory httpClientFactory, IOptions<LlmOptions> options) : IEmbeddingClient, IChatClient
+public sealed class HttpLlmClient(
+    IHttpClientFactory httpClientFactory,
+    IOptions<LlmOptions> options,
+    ILogger<HttpLlmClient> logger) : IEmbeddingClient, IChatClient
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
     {
         var config = options.Value;
@@ -27,6 +30,10 @@ public sealed class HttpLlmClient(IHttpClientFactory httpClientFactory, IOptions
             input
         });
 
+        logger.LogDebug(
+            "Calling embedding endpoint {Endpoint} with model {Model}.",
+            config.EmbeddingEndpoint,
+            config.EmbeddingModel);
         var payload = await SendAsync(request, "embedding", cancellationToken).ConfigureAwait(false);
         using var document = JsonDocument.Parse(payload);
         if (!document.RootElement.TryGetProperty("data", out var data) ||
@@ -55,6 +62,10 @@ public sealed class HttpLlmClient(IHttpClientFactory httpClientFactory, IOptions
             messages = messages.Select(message => new { role = message.Role, content = message.Content })
         });
 
+        logger.LogDebug(
+            "Calling chat endpoint {Endpoint} with model {Model}.",
+            config.ChatEndpoint,
+            config.ChatModel);
         var payload = await SendAsync(request, "chat", cancellationToken).ConfigureAwait(false);
         using var document = JsonDocument.Parse(payload);
         if (!document.RootElement.TryGetProperty("choices", out var choices) ||
@@ -78,6 +89,12 @@ public sealed class HttpLlmClient(IHttpClientFactory httpClientFactory, IOptions
         var payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
+            logger.LogWarning(
+                "The LLM {Operation} endpoint returned {StatusCode} ({ReasonPhrase}): {Payload}",
+                operation,
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                Truncate(payload));
             throw new HttpRequestException(
                 $"The LLM {operation} endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}): {Truncate(payload)}",
                 inner: null,
@@ -101,7 +118,7 @@ public sealed class HttpLlmClient(IHttpClientFactory httpClientFactory, IOptions
 
     private static StringContent JsonContent<T>(T payload)
     {
-        return new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        return new StringContent(JsonSerializer.Serialize(payload, RagJson.Options), Encoding.UTF8, "application/json");
     }
 
     private static string Truncate(string payload)

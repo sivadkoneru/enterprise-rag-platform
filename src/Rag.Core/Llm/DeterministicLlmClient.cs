@@ -53,7 +53,7 @@ public sealed class DeterministicLlmClient(IOptions<LlmOptions> options) : IEmbe
         var context = contextIndex < 0 ? input : input[(contextIndex + "Context:".Length)..].Trim();
         var firstContentLine = context
             .Split(["\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault(line => !line.StartsWith("[", StringComparison.Ordinal));
+            .FirstOrDefault(line => !line.StartsWith('['));
         var selected = string.IsNullOrWhiteSpace(firstContentLine) ? context : firstContentLine;
         return selected.Length == 0
             ? "I don't know based on the supplied context."
