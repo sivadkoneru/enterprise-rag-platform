@@ -1,3 +1,4 @@
+using Microsoft.OpenApi.Models;
 using Rag.Core.Abstractions;
 using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
@@ -11,16 +12,39 @@ builder.Configuration
     .AddInMemoryCollection(EnvFile.LoadFromWorkingDirectory())
     .AddEnvironmentVariables()
     .AddCommandLine(args);
+var configuredUrls = builder.Configuration["ASPNETCORE_URLS"] ?? builder.Configuration["urls"];
+if (!string.IsNullOrWhiteSpace(configuredUrls))
+{
+    builder.WebHost.UseUrls(configuredUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+}
+
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Enterprise RAG API",
+        Version = "v1",
+        Description = "Minimal API for document ingestion, ingestion jobs, chunk previews, and grounded RAG queries."
+    });
+});
 builder.Services.AddRagPlatform(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(options =>
+{
+    options.DocumentTitle = "Enterprise RAG API";
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Enterprise RAG API v1");
+});
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "rag-api" }));
+app.MapGet("/", () => Results.Redirect("/swagger"))
+    .ExcludeFromDescription();
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "rag-api" }))
+    .WithName("HealthCheck")
+    .WithTags("Health");
 
 app.MapPost("/documents", async (ApiIngestionRequest request, IIngestionJobQueue queue, CancellationToken cancellationToken) =>
 {
@@ -35,25 +59,85 @@ app.MapPost("/documents", async (ApiIngestionRequest request, IIngestionJobQueue
 
     var job = await queue.EnqueueAsync(new IngestionRequest(Strategy: request.Strategy, Sources: sources), cancellationToken).ConfigureAwait(false);
     return Results.Accepted($"/jobs/{job.Id}", new { jobId = job.Id, status = job.Status.ToString() });
-});
+})
+    .WithName("EnqueueDocuments")
+    .WithTags("Documents");
 
 app.MapGet("/jobs/{id}", async (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
 {
     var job = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
     return job is null ? Results.NotFound() : Results.Ok(job.ToStatusResponse());
-});
+})
+    .WithName("GetJob")
+    .WithTags("Jobs");
+
+app.MapPost("/jobs/{id}/pause", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    var job = await store.MarkPausedAsync(id, cancellationToken).ConfigureAwait(false);
+    return Results.Ok((job ?? existing).ToStatusResponse());
+})
+    .WithName("PauseJob")
+    .WithTags("Jobs");
+
+app.MapPost("/jobs/{id}/cancel", async Task<IResult> (string id, IIngestionJobStore store, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    var job = await store.MarkCanceledAsync(id, cancellationToken).ConfigureAwait(false);
+    return Results.Ok((job ?? existing).ToStatusResponse());
+})
+    .WithName("CancelJob")
+    .WithTags("Jobs");
+
+app.MapPost("/jobs/{id}/resume", async Task<IResult> (string id, IIngestionJobStore store, IIngestionJobQueue queue, CancellationToken cancellationToken) =>
+{
+    var existing = await store.GetAsync(id, cancellationToken).ConfigureAwait(false);
+    if (existing is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (existing.Status != IngestionJobStatus.Paused)
+    {
+        return Results.Ok(existing.ToStatusResponse());
+    }
+
+    var job = await store.MarkQueuedAsync(id, cancellationToken).ConfigureAwait(false);
+    if (job is not null && job.Status == IngestionJobStatus.Queued)
+    {
+        await queue.EnqueueExistingAsync(job, cancellationToken).ConfigureAwait(false);
+    }
+
+    return Results.Ok((job ?? existing).ToStatusResponse());
+})
+    .WithName("ResumeJob")
+    .WithTags("Jobs");
 
 app.MapPost("/chunk/preview", async (ChunkPreviewRequest request, IChunkPreviewService previewService, CancellationToken cancellationToken) =>
 {
     var result = await previewService.PreviewAsync(request.Path, cancellationToken).ConfigureAwait(false);
     return Results.Ok(result);
-});
+})
+    .WithName("PreviewChunks")
+    .WithTags("Chunks");
 
 app.MapPost("/query", async (ApiQueryRequest request, IQueryPipeline pipeline, CancellationToken cancellationToken) =>
 {
     var answer = await pipeline.QueryAsync(new QueryRequest(request.Question, request.TopK, request.Filter?.ToCoreFilter()), cancellationToken).ConfigureAwait(false);
     return Results.Ok(answer);
-});
+})
+    .WithName("Query")
+    .WithTags("Query");
 
 app.Run();
 
@@ -120,10 +204,13 @@ internal static class IngestionJobApiExtensions
             strategy = job.Request.Strategy,
             documentCount = job.DocumentCount,
             chunkCount = job.ChunkCount,
-            documentIds = job.DocumentIds ?? [],
-            chunkIds = job.ChunkIds ?? [],
+            totalSourceCount = job.TotalSourceCount,
+            processedSourceCount = job.ProcessedSourceCount,
+            currentSource = job.CurrentSource,
+            workerId = job.WorkerId,
             error = job.Error,
             createdAt = job.CreatedAt,
+            updatedAt = job.UpdatedAt,
             startedAt = job.StartedAt,
             completedAt = job.CompletedAt
         };

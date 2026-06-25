@@ -7,13 +7,13 @@ namespace Rag.Core.Pipelines;
 
 public sealed class ChunkPreviewService(
     IDocumentParserResolver parserResolver,
+    IEnumerable<IMultiDocumentParser> multiDocumentParsers,
     IChunkingStrategyFactory chunkingStrategyFactory,
     IOptions<ChunkingOptions> options) : IChunkPreviewService
 {
     public async Task<IReadOnlyList<ChunkPreview>> PreviewAsync(string path, CancellationToken cancellationToken = default)
     {
-        var parser = parserResolver.Resolve(path);
-        var document = await parser.ParseAsync(path, cancellationToken).ConfigureAwait(false);
+        var document = await ParseFirstDocumentAsync(path, cancellationToken).ConfigureAwait(false);
         var previews = new List<ChunkPreview>();
         foreach (var strategy in chunkingStrategyFactory.Strategies)
         {
@@ -28,5 +28,22 @@ public sealed class ChunkPreviewService(
         }
 
         return previews;
+    }
+
+    private async Task<ParsedDocument> ParseFirstDocumentAsync(string path, CancellationToken cancellationToken)
+    {
+        var multiParser = multiDocumentParsers.FirstOrDefault(parser => parser.CanParse(path));
+        if (multiParser is not null)
+        {
+            await foreach (var document in multiParser.ParseManyAsync(path, cancellationToken: cancellationToken).ConfigureAwait(false))
+            {
+                return document;
+            }
+
+            throw new InvalidOperationException($"Structured document '{path}' did not produce any documents.");
+        }
+
+        var parser = parserResolver.Resolve(path);
+        return await parser.ParseAsync(path, cancellationToken).ConfigureAwait(false);
     }
 }

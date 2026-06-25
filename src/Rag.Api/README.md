@@ -6,10 +6,17 @@ ASP.NET Core Web API for the RAG platform.
 
 Expose ingestion, ingestion job status, chunk preview, query, and health endpoints over the core platform services.
 
+## Swagger UI
+
+Swagger UI is enabled by default at `/swagger` when the API runs. The root path `/` redirects to the Swagger UI, and the OpenAPI JSON document is available at `/swagger/v1/swagger.json`.
+
 ## Endpoints
 
 - `POST /documents`
 - `GET /jobs/{id}`
+- `POST /jobs/{id}/pause`
+- `POST /jobs/{id}/cancel`
+- `POST /jobs/{id}/resume`
 - `POST /chunk/preview`
 - `POST /query`
 - `GET /health`
@@ -51,7 +58,15 @@ The job is queued through the core `IIngestionJobQueue`; the default job store i
 
 Returns the in-process ingestion job status.
 
-Output fields include `jobId`, `status`, `sources`, `strategy`, `documentCount`, `chunkCount`, `documentIds`, `error`, and timestamps.
+Output fields include `jobId`, `status`, `sources`, `strategy`, `documentCount`, `chunkCount`, source progress, `error`, and timestamps. Per-document and per-chunk ID arrays are intentionally omitted so status responses stay small for large ingestion jobs.
+
+### Job Control
+
+`POST /jobs/{id}/pause` requests a cooperative pause. A running job stops after the current source item finishes and remains `Paused` until resumed.
+
+`POST /jobs/{id}/resume` re-queues a paused job with the same `jobId`.
+
+`POST /jobs/{id}/cancel` requests a cooperative cancel. A canceled job is terminal and will not be recovered on API restart.
 
 ### `POST /query`
 

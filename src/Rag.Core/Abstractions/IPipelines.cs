@@ -5,6 +5,17 @@ namespace Rag.Core.Abstractions;
 public interface IIngestionPipeline
 {
     Task<IngestionResult> IngestAsync(IngestionRequest request, CancellationToken cancellationToken = default);
+
+    Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        CancellationToken cancellationToken = default);
+
+    Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        Func<CancellationToken, Task<IngestionJobStatus>>? statusProvider,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IQueryPipeline

@@ -95,7 +95,12 @@ Common options:
 | `LLM_CHAT_ENDPOINT` | Chat completion endpoint URL. |
 | `LLM_CHAT_MODEL` | Chat model/deployment name. |
 | `LLM_SYSTEM_PROMPT` | Grounding prompt sent on every chat call. |
+| `LLM_TIMEOUT_SECONDS` | HTTP LLM timeout per attempt. |
+| `LLM_RETRY_COUNT` | HTTP LLM retry attempts. |
+| `LLM_RETRY_BACKOFF_SECONDS` | HTTP LLM retry backoff. |
 | `INGESTION_MAX_PARALLELISM` | Maximum concurrent source items processed by background ingestion. |
+| `JOB_STORE` | Ingestion job status backend: `memory` or `mongo`. |
+| `MONGO_JOBS_COLLECTION` | MongoDB collection for persistent ingestion jobs when `JOB_STORE=mongo`. |
 | `S3_REGION` | AWS region for S3 source enumeration. |
 | `S3_ENDPOINT` | Optional S3 endpoint override, for example LocalStack. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credentials for S3 sources; local defaults use fake LocalStack values. |
@@ -120,6 +125,8 @@ DOC_STORE=mongo
 MONGO_CONNECTION_STRING=mongodb://localhost:27017
 MONGO_DATABASE=rag
 MONGO_CHUNKS_COLLECTION=chunks
+JOB_STORE=mongo
+MONGO_JOBS_COLLECTION=ingestion_jobs
 VECTOR_STORE=elasticsearch
 ELASTICSEARCH_URI=http://localhost:9200
 ELASTICSEARCH_INDEX=rag-chunks
@@ -159,7 +166,8 @@ dotnet run --project src/Rag.Api
 
 - `GET /health` returns service health.
 - `POST /documents` enqueues ingestion for one or more `file`, `s3`, or `azureblob` sources and returns `202 Accepted` with a `jobId`.
-- `GET /jobs/{id}` returns queued/running/succeeded/failed ingestion job state, counts, document ids, and any error.
+- `GET /jobs/{id}` returns queued/running/succeeded/failed ingestion job state, compact progress counts, and any error.
+- `POST /jobs/{id}/pause`, `/cancel`, and `/resume` provide cooperative job control between source items.
 - `POST /chunk/preview` previews all chunking strategies for a document path.
 - `POST /query` runs retrieval and answer generation using `QueryRequest`; scoped filters can target `sources`, `origins`, `documentIds`, and `fileTypes`.
 

@@ -8,6 +8,7 @@ namespace Rag.Core.Pipelines;
 public sealed class IngestionPipeline(
     IDocumentSourceResolver sourceResolver,
     IDocumentParserResolver parserResolver,
+    IEnumerable<IMultiDocumentParser> multiDocumentParsers,
     IChunkingStrategyFactory chunkingStrategyFactory,
     IEmbeddingClient embeddingClient,
     IDocumentStore documentStore,
@@ -16,8 +17,26 @@ public sealed class IngestionPipeline(
 {
     public async Task<IngestionResult> IngestAsync(IngestionRequest request, CancellationToken cancellationToken = default)
     {
+        return await IngestAsync(request, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return await IngestAsync(request, progress, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IngestionResult> IngestAsync(
+        IngestionRequest request,
+        IProgress<IngestionProgress>? progress,
+        Func<CancellationToken, Task<IngestionJobStatus>>? statusProvider,
+        CancellationToken cancellationToken = default)
+    {
         var allChunkIds = new List<string>();
         var allDocumentIds = new List<string>();
+        var processedSourceCount = 0;
         var strategy = chunkingStrategyFactory.Resolve(request.Strategy);
         var sourceUris = request.SourceUris;
 
@@ -27,6 +46,7 @@ public sealed class IngestionPipeline(
         }
 
         await vectorStore.EnsureIndexAsync(cancellationToken).ConfigureAwait(false);
+        await ThrowIfJobStoppedAsync(statusProvider, cancellationToken).ConfigureAwait(false);
         var sourceItems = new List<SourceItem>();
         try
         {
@@ -39,6 +59,8 @@ public sealed class IngestionPipeline(
                 }
             }
 
+            ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, null);
+
             await Parallel.ForEachAsync(
                 sourceItems,
                 new ParallelOptions
@@ -48,12 +70,25 @@ public sealed class IngestionPipeline(
                 },
                 async (item, token) =>
                 {
+                    await ThrowIfJobStoppedAsync(statusProvider, token).ConfigureAwait(false);
                     var result = await IngestItemAsync(item, strategy, token).ConfigureAwait(false);
                     lock (allChunkIds)
                     {
                         allChunkIds.AddRange(result.ChunkIds);
-                        allDocumentIds.Add(result.DocumentId);
+                        if (result.DocumentIds is { Count: > 0 })
+                        {
+                            allDocumentIds.AddRange(result.DocumentIds);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(result.DocumentId))
+                        {
+                            allDocumentIds.Add(result.DocumentId);
+                        }
+
+                        processedSourceCount++;
+                        ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, item.Source);
                     }
+
+                    await ThrowIfJobStoppedAsync(statusProvider, token).ConfigureAwait(false);
                 }).ConfigureAwait(false);
         }
         finally
@@ -64,45 +99,65 @@ public sealed class IngestionPipeline(
             }
         }
 
+        await ThrowIfJobStoppedAsync(statusProvider, cancellationToken).ConfigureAwait(false);
+        ReportProgress(progress, sourceItems.Count, processedSourceCount, allDocumentIds, allChunkIds, null);
         return new IngestionResult(allDocumentIds.LastOrDefault() ?? string.Empty, allChunkIds.Count, strategy.Name, allChunkIds, allDocumentIds);
     }
 
     private async Task<IngestionResult> IngestItemAsync(SourceItem item, IChunkingStrategy strategy, CancellationToken cancellationToken)
     {
-        var parser = parserResolver.Resolve(item.LocalPath);
-        var parsedDocument = await parser.ParseAsync(item.LocalPath, cancellationToken).ConfigureAwait(false);
-        var document = EnrichDocument(parsedDocument, item);
-        var chunks = await strategy.ChunkAsync(document, cancellationToken).ConfigureAwait(false);
-        var vectors = new List<VectorRecord>();
+        var documents = await ParseDocumentsAsync(item, cancellationToken).ConfigureAwait(false);
+        var documentIds = new List<string>();
+        var chunkIds = new List<string>();
 
-        foreach (var chunk in chunks)
+        foreach (var parsedDocument in documents)
         {
-            var vector = await embeddingClient.EmbedAsync(chunk.Text, cancellationToken).ConfigureAwait(false);
-            vectors.Add(new VectorRecord(
-                chunk.Id,
-                chunk.DocumentId,
-                vector,
-                new Dictionary<string, string>
-                {
-                    ["source"] = chunk.Metadata.Source,
-                    ["origin"] = chunk.Metadata.Origin,
-                    ["fileName"] = chunk.Metadata.FileName,
-                    ["fileType"] = FileType(chunk.Metadata.Extension),
-                    ["extension"] = chunk.Metadata.Extension,
-                    ["chunkIndex"] = chunk.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                }));
+            var document = EnrichDocument(parsedDocument, item);
+            var chunks = await strategy.ChunkAsync(document, cancellationToken).ConfigureAwait(false);
+            var vectors = new List<VectorRecord>();
+
+            foreach (var chunk in chunks)
+            {
+                var vector = await embeddingClient.EmbedAsync(chunk.Text, cancellationToken).ConfigureAwait(false);
+                vectors.Add(new VectorRecord(
+                    chunk.Id,
+                    chunk.DocumentId,
+                    vector,
+                    VectorMetadata(chunk)));
+            }
+
+            await documentStore.UpsertDocumentAsync(document, cancellationToken).ConfigureAwait(false);
+            await documentStore.UpsertChunksAsync(chunks, cancellationToken).ConfigureAwait(false);
+            await vectorStore.UpsertAsync(vectors, cancellationToken).ConfigureAwait(false);
+
+            documentIds.Add(document.Id);
+            chunkIds.AddRange(chunks.Select(chunk => chunk.Id));
         }
 
-        await documentStore.UpsertDocumentAsync(document, cancellationToken).ConfigureAwait(false);
-        await documentStore.UpsertChunksAsync(chunks, cancellationToken).ConfigureAwait(false);
-        await vectorStore.UpsertAsync(vectors, cancellationToken).ConfigureAwait(false);
+        return new IngestionResult(documentIds.LastOrDefault() ?? string.Empty, chunkIds.Count, strategy.Name, chunkIds, documentIds);
+    }
 
-        return new IngestionResult(document.Id, chunks.Count, strategy.Name, chunks.Select(chunk => chunk.Id).ToArray(), [document.Id]);
+    private async Task<IReadOnlyList<ParsedDocument>> ParseDocumentsAsync(SourceItem item, CancellationToken cancellationToken)
+    {
+        var multiParser = multiDocumentParsers.FirstOrDefault(parser => parser.CanParse(item.LocalPath));
+        if (multiParser is not null)
+        {
+            var documents = new List<ParsedDocument>();
+            await foreach (var document in multiParser.ParseManyAsync(item.LocalPath, item.Attributes, cancellationToken).ConfigureAwait(false))
+            {
+                documents.Add(document);
+            }
+
+            return documents;
+        }
+
+        var parser = parserResolver.Resolve(item.LocalPath);
+        return [await parser.ParseAsync(item.LocalPath, cancellationToken).ConfigureAwait(false)];
     }
 
     private static ParsedDocument EnrichDocument(ParsedDocument document, SourceItem item)
     {
-        var documentId = StableId(item.Origin, item.Source);
+        var documentId = StableId(item.Origin, item.Source, RecordKey(document));
         var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (document.Metadata.Attributes is not null)
         {
@@ -133,14 +188,85 @@ public sealed class IngestionPipeline(
         return new ParsedDocument(documentId, document.Text, metadata);
     }
 
-    private static string StableId(string origin, string source)
+    private static Dictionary<string, string> VectorMetadata(TextChunk chunk)
     {
-        var input = $"{origin}:{source}";
+        var metadata = new Dictionary<string, string>
+        {
+            ["source"] = chunk.Metadata.Source,
+            ["origin"] = chunk.Metadata.Origin,
+            ["fileName"] = chunk.Metadata.FileName,
+            ["fileType"] = FileType(chunk.Metadata.Extension),
+            ["extension"] = chunk.Metadata.Extension,
+            ["chunkIndex"] = chunk.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
+        if (chunk.Metadata.Attributes is not null &&
+            chunk.Metadata.Attributes.TryGetValue("recordKey", out var recordKey) &&
+            !string.IsNullOrWhiteSpace(recordKey))
+        {
+            metadata["recordKey"] = recordKey;
+        }
+
+        return metadata;
+    }
+
+    private static string? RecordKey(ParsedDocument document)
+    {
+        return document.Metadata.Attributes is not null &&
+            document.Metadata.Attributes.TryGetValue("recordKey", out var recordKey) &&
+            !string.IsNullOrWhiteSpace(recordKey)
+                ? recordKey
+                : null;
+    }
+
+    private static string StableId(string origin, string source, string? recordKey)
+    {
+        var input = string.IsNullOrWhiteSpace(recordKey) ? $"{origin}:{source}" : $"{origin}:{source}:{recordKey}";
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input)))[..24].ToLowerInvariant();
     }
 
     private static string FileType(string extension)
     {
         return extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension.ToLowerInvariant()}";
+    }
+
+    private static async Task ThrowIfJobStoppedAsync(
+        Func<CancellationToken, Task<IngestionJobStatus>>? statusProvider,
+        CancellationToken cancellationToken)
+    {
+        if (statusProvider is null)
+        {
+            return;
+        }
+
+        var status = await statusProvider(cancellationToken).ConfigureAwait(false);
+        if (status == IngestionJobStatus.Paused)
+        {
+            throw new IngestionJobPausedException();
+        }
+
+        if (status == IngestionJobStatus.Canceled)
+        {
+            throw new IngestionJobCanceledException();
+        }
+    }
+
+    private static void ReportProgress(
+        IProgress<IngestionProgress>? progress,
+        int totalSourceCount,
+        int processedSourceCount,
+        IReadOnlyList<string> documentIds,
+        IReadOnlyList<string> chunkIds,
+        string? currentSource)
+    {
+        progress?.Report(new IngestionProgress(
+            totalSourceCount,
+            processedSourceCount,
+            documentIds.Count,
+            chunkIds.Count,
+            documentIds.ToArray(),
+            chunkIds.ToArray(),
+            currentSource,
+            DateTimeOffset.UtcNow));
     }
 }

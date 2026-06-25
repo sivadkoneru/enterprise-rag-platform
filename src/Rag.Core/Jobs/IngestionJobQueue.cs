@@ -15,8 +15,13 @@ public sealed class IngestionJobQueue(IIngestionJobStore jobStore) : IIngestionJ
     public async Task<IngestionJob> EnqueueAsync(IngestionRequest request, CancellationToken cancellationToken = default)
     {
         var job = await jobStore.CreateAsync(request, cancellationToken).ConfigureAwait(false);
-        await _queue.Writer.WriteAsync(job, cancellationToken).ConfigureAwait(false);
+        await EnqueueExistingAsync(job, cancellationToken).ConfigureAwait(false);
         return job;
+    }
+
+    public async Task EnqueueExistingAsync(IngestionJob job, CancellationToken cancellationToken = default)
+    {
+        await _queue.Writer.WriteAsync(job, cancellationToken).ConfigureAwait(false);
     }
 
     public IAsyncEnumerable<IngestionJob> DequeueAllAsync(CancellationToken cancellationToken = default)

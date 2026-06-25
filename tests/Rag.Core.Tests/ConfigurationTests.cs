@@ -28,7 +28,10 @@ public sealed class ConfigurationTests
               "Llm": {
                 "Provider": "openai",
                 "EmbeddingModel": "embed-json",
-                "ChatModel": "chat-json"
+                "ChatModel": "chat-json",
+                "TimeoutSeconds": 120,
+                "RetryCount": 5,
+                "RetryBackoffSeconds": 6
               },
               "DocumentStore": {
                 "Provider": "mongo",
@@ -55,6 +58,9 @@ public sealed class ConfigurationTests
         services.GetRequiredService<IOptions<LlmOptions>>().Value.Provider.Should().Be("openai");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingModel.Should().Be("embed-json");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatModel.Should().Be("chat-json");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.TimeoutSeconds.Should().Be(120);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryCount.Should().Be(5);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryBackoffSeconds.Should().Be(6);
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.Provider.Should().Be("mongo");
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ConnectionString.Should().Be("mongodb://json");
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.DatabaseName.Should().Be("jsondb");
@@ -99,6 +105,9 @@ public sealed class ConfigurationTests
                 ["LLM_EMBEDDING_MODEL"] = "embed-env",
                 ["LLM_CHAT_ENDPOINT"] = "https://llm.example/chat/completions",
                 ["LLM_CHAT_MODEL"] = "chat-env",
+                ["LLM_TIMEOUT_SECONDS"] = "180",
+                ["LLM_RETRY_COUNT"] = "4",
+                ["LLM_RETRY_BACKOFF_SECONDS"] = "5",
                 ["DOC_STORE"] = "mongo",
                 ["MONGO_CONNECTION_STRING"] = "mongodb://env",
                 ["VECTOR_STORE"] = "elasticsearch",
@@ -118,6 +127,9 @@ public sealed class ConfigurationTests
         services.GetRequiredService<IOptions<LlmOptions>>().Value.EmbeddingModel.Should().Be("embed-env");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatEndpoint.Should().Be("https://llm.example/chat/completions");
         services.GetRequiredService<IOptions<LlmOptions>>().Value.ChatModel.Should().Be("chat-env");
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.TimeoutSeconds.Should().Be(180);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryCount.Should().Be(4);
+        services.GetRequiredService<IOptions<LlmOptions>>().Value.RetryBackoffSeconds.Should().Be(5);
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.Provider.Should().Be("mongo");
         services.GetRequiredService<IOptions<DocumentStoreOptions>>().Value.ConnectionString.Should().Be("mongodb://env");
         services.GetRequiredService<IOptions<VectorStoreOptions>>().Value.Provider.Should().Be("elasticsearch");
@@ -151,6 +163,47 @@ public sealed class ConfigurationTests
         options.EmbeddingModel.Should().Be("embed-deployment");
         options.ChatEndpoint.Should().Be("https://example.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21");
         options.ChatModel.Should().Be("chat-deployment");
+    }
+
+    [Fact]
+    public void LlmTimeoutSettingsCanFallBackToLegacyHttpKeys()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["HTTP_TIMEOUT_SECONDS"] = "90",
+                ["HTTP_RETRY_COUNT"] = "2",
+                ["HTTP_RETRY_BACKOFF_SECONDS"] = "7"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<LlmOptions>>().Value;
+        options.TimeoutSeconds.Should().Be(90);
+        options.RetryCount.Should().Be(2);
+        options.RetryBackoffSeconds.Should().Be(7);
+    }
+
+    [Fact]
+    public void LlmHttpClientSupportsLongAttemptTimeouts()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LLM_TIMEOUT_SECONDS"] = "180"
+            })
+            .Build();
+
+        using var services = new ServiceCollection()
+            .AddRagPlatform(configuration)
+            .BuildServiceProvider();
+
+        var createClient = () => services.GetRequiredService<IHttpClientFactory>().CreateClient("rag-llm");
+
+        createClient.Should().NotThrow();
     }
 
     private static ServiceProvider BuildServicesFromJson(string json)

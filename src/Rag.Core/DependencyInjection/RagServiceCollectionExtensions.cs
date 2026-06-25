@@ -47,6 +47,9 @@ public static class RagServiceCollectionExtensions
             options.ChatEndpoint = configuration["LLM_CHAT_ENDPOINT"] ?? options.ChatEndpoint;
             options.ChatModel = configuration["LLM_CHAT_MODEL"] ?? options.ChatModel;
             options.SystemPrompt = configuration["LLM_SYSTEM_PROMPT"] ?? options.SystemPrompt;
+            options.TimeoutSeconds = PositiveInt(configuration["LLM_TIMEOUT_SECONDS"] ?? configuration["HTTP_TIMEOUT_SECONDS"], options.TimeoutSeconds);
+            options.RetryCount = PositiveInt(configuration["LLM_RETRY_COUNT"] ?? configuration["HTTP_RETRY_COUNT"], options.RetryCount);
+            options.RetryBackoffSeconds = PositiveInt(configuration["LLM_RETRY_BACKOFF_SECONDS"] ?? configuration["HTTP_RETRY_BACKOFF_SECONDS"], options.RetryBackoffSeconds);
         });
         services.Configure<IngestionOptions>(options =>
         {
@@ -54,6 +57,14 @@ public static class RagServiceCollectionExtensions
             options.MaxDegreeOfParallelism = Int(
                 configuration["INGESTION_MAX_DEGREE_OF_PARALLELISM"] ?? configuration["INGESTION_MAX_PARALLELISM"],
                 options.MaxDegreeOfParallelism);
+        });
+        services.Configure<JobStoreOptions>(options =>
+        {
+            configuration.GetSection("JobStore").Bind(options);
+            options.Provider = configuration["JOB_STORE"] ?? options.Provider;
+            options.ConnectionString = configuration["MONGO_CONNECTION_STRING"] ?? options.ConnectionString;
+            options.DatabaseName = configuration["MONGO_DATABASE"] ?? options.DatabaseName;
+            options.CollectionName = configuration["MONGO_JOBS_COLLECTION"] ?? options.CollectionName;
         });
         services.Configure<S3Options>(options =>
         {
@@ -87,7 +98,26 @@ public static class RagServiceCollectionExtensions
             options.Dimensions = Int(configuration["ELASTICSEARCH_VECTOR_DIMENSIONS"], options.Dimensions);
         });
 
-        services.AddHttpClient("rag-llm").AddStandardResilienceHandler();
+        var llmHttpOptions = BuildLlmOptions(configuration);
+        var llmAttemptTimeout = TimeSpan.FromSeconds(llmHttpOptions.TimeoutSeconds);
+        var llmRetryCount = llmHttpOptions.RetryCount;
+        var llmRetryBackoff = TimeSpan.FromSeconds(llmHttpOptions.RetryBackoffSeconds);
+        var llmTotalTimeout = TimeSpan.FromTicks((llmAttemptTimeout.Ticks * (llmRetryCount + 1)) + (llmRetryBackoff.Ticks * llmRetryCount));
+        var llmCircuitBreakerSamplingDuration = TimeSpan.FromTicks(llmAttemptTimeout.Ticks * 2);
+
+        services.AddHttpClient("rag-llm", client =>
+        {
+            client.Timeout = llmTotalTimeout;
+        }).AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = llmAttemptTimeout;
+            options.TotalRequestTimeout.Timeout = llmTotalTimeout;
+            options.Retry.MaxRetryAttempts = llmRetryCount;
+            options.Retry.Delay = llmRetryBackoff;
+            options.CircuitBreaker.SamplingDuration = Max(
+                options.CircuitBreaker.SamplingDuration,
+                llmCircuitBreakerSamplingDuration);
+        });
         services.AddHttpClient("rag-elasticsearch").AddStandardResilienceHandler();
 
         services.AddSingleton<IAmazonS3>(sp =>
@@ -113,6 +143,9 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IDocumentParser, TxtDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
         services.AddSingleton<IDocumentParser, PdfDocumentParser>();
+        services.AddSingleton<IDocumentParser, HtmlDocumentParser>();
+        services.AddSingleton<IMultiDocumentParser, JsonlDocumentParser>();
+        services.AddSingleton<IMultiDocumentParser, CsvDocumentParser>();
         services.AddSingleton<IDocumentParserResolver, DocumentParserResolver>();
 
         services.AddSingleton<IDocumentSource, LocalDirectorySource>();
@@ -146,7 +179,9 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IIngestionPipeline, IngestionPipeline>();
         services.AddSingleton<IQueryPipeline, QueryPipeline>();
         services.AddSingleton<IChunkPreviewService, ChunkPreviewService>();
-        services.AddSingleton<IIngestionJobStore, InMemoryIngestionJobStore>();
+        services.AddSingleton<InMemoryIngestionJobStore>();
+        services.AddSingleton<MongoIngestionJobStore>();
+        services.AddSingleton<IIngestionJobStore>(ResolveJobStore);
         services.AddSingleton<IIngestionJobQueue, IngestionJobQueue>();
         services.AddHostedService<IngestionBackgroundService>();
 
@@ -190,9 +225,39 @@ public static class RagServiceCollectionExtensions
         };
     }
 
+    private static IIngestionJobStore ResolveJobStore(IServiceProvider services)
+    {
+        var provider = services.GetRequiredService<IOptions<JobStoreOptions>>().Value.Provider;
+        return provider.ToLowerInvariant() switch
+        {
+            "mongo" => services.GetRequiredService<MongoIngestionJobStore>(),
+            _ => services.GetRequiredService<InMemoryIngestionJobStore>()
+        };
+    }
+
+    private static LlmOptions BuildLlmOptions(IConfiguration configuration)
+    {
+        var options = new LlmOptions();
+        configuration.GetSection("Llm").Bind(options);
+        options.TimeoutSeconds = PositiveInt(configuration["LLM_TIMEOUT_SECONDS"] ?? configuration["HTTP_TIMEOUT_SECONDS"], options.TimeoutSeconds);
+        options.RetryCount = PositiveInt(configuration["LLM_RETRY_COUNT"] ?? configuration["HTTP_RETRY_COUNT"], options.RetryCount);
+        options.RetryBackoffSeconds = PositiveInt(configuration["LLM_RETRY_BACKOFF_SECONDS"] ?? configuration["HTTP_RETRY_BACKOFF_SECONDS"], options.RetryBackoffSeconds);
+        return options;
+    }
+
+    private static TimeSpan Max(TimeSpan first, TimeSpan second)
+    {
+        return first >= second ? first : second;
+    }
+
     private static int Int(string? value, int fallback)
     {
         return int.TryParse(value, out var parsed) ? parsed : fallback;
+    }
+
+    private static int PositiveInt(string? value, int fallback)
+    {
+        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 
     private static double Double(string? value, double fallback)

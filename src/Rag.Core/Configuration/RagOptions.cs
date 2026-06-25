@@ -35,11 +35,28 @@ public sealed class LlmOptions
     public string? ChatModel { get; set; }
 
     public string SystemPrompt { get; set; } = "Answer only from the supplied context. If the answer is not present, say you don't know. Always cite sources when context is used.";
+
+    public int TimeoutSeconds { get; set; } = 60;
+
+    public int RetryCount { get; set; } = 3;
+
+    public int RetryBackoffSeconds { get; set; } = 2;
 }
 
 public sealed class IngestionOptions
 {
     public int MaxDegreeOfParallelism { get; set; } = 4;
+}
+
+public sealed class JobStoreOptions
+{
+    public string Provider { get; set; } = "memory";
+
+    public string? ConnectionString { get; set; }
+
+    public string DatabaseName { get; set; } = "rag";
+
+    public string CollectionName { get; set; } = "ingestion_jobs";
 }
 
 public sealed class S3Options
