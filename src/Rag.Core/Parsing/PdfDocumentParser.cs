@@ -1,11 +1,12 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Rag.Core.Abstractions;
 using Rag.Core.Models;
 using UglyToad.PdfPig;
 
 namespace Rag.Core.Parsing;
 
-public sealed class PdfDocumentParser : IDocumentParser
+public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocumentParser
 {
     public string Name => "pdf";
 
@@ -17,9 +18,16 @@ public sealed class PdfDocumentParser : IDocumentParser
 
     public async Task<ParsedDocument> ParseAsync(string path, CancellationToken cancellationToken = default)
     {
-        var extracted = ExtractWithPdfPig(path);
+        var extracted = ExtractWithPdfPig(path, out var failure);
         if (string.IsNullOrWhiteSpace(extracted))
         {
+            // The fallback still returns text, so a degraded extraction would otherwise look like a
+            // clean ingest. Warn so an operator can tell "indexed the document" from "indexed PDF
+            // syntax" without diffing the stored chunks.
+            logger.LogWarning(
+                failure,
+                "PdfPig extracted no text from '{Path}'; falling back to raw-text scraping, which can index PDF syntax instead of document content.",
+                path);
             var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
             extracted = ExtractReadableText(bytes);
         }
@@ -28,8 +36,9 @@ public sealed class PdfDocumentParser : IDocumentParser
         return new ParsedDocument(metadata.DocumentId, TextNormalizer.Normalize(extracted), metadata);
     }
 
-    private static string ExtractWithPdfPig(string path)
+    private static string ExtractWithPdfPig(string path, out Exception? failure)
     {
+        failure = null;
         try
         {
             using var document = PdfDocument.Open(path);
@@ -46,6 +55,7 @@ public sealed class PdfDocumentParser : IDocumentParser
         // returning empty hands the document to the raw-text fallback instead of failing ingestion.
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            failure = exception;
             return string.Empty;
         }
     }
