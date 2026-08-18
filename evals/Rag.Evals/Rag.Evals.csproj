@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Rag.Evals</RootNamespace>
+    <AssemblyName>Rag.Evals</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Rag.Evals.Tests exercises the corpus writer, anchor resolver, and scorers directly. -->
+    <InternalsVisibleTo Include="Rag.Evals.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.Core\Rag.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- PdfPig writes samples/handbook.pdf; the same package Rag.Core already reads PDFs with. -->
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -9,3 +9,6 @@ plans/
 TestResults/
 *.user
 *.suo
+
+# Local-only eval artifacts (wall-clock timings vary per machine and must never be committed).
+evals/results/*.local.json

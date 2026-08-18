@@ -25,8 +25,11 @@ src/
   Rag.Cli/         System.CommandLine-based developer/operator CLI
 tests/
   Rag.Core.Tests/        Unit tests for core behavior
+  Rag.Evals.Tests/       Evaluation harness tests and retrieval regression floors
   Rag.Integration.Tests/ Integration tests for provider selection and backend containers
-samples/           Sample txt, md, and pdf documents
+evals/
+  Rag.Evals/       Golden dataset, deterministic scorers, and the chunking benchmark
+samples/           Sample txt, md, and pdf documents (handbook.pdf is generated)
 docker-compose.yml Local Elasticsearch, MongoDB, LocalStack S3, and Azurite services
 ```
 

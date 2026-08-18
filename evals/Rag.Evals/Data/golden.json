@@ -1,0 +1,925 @@
+{
+  "schemaVersion": 1,
+  "primaryDocument": "handbook.pdf",
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How long does a customer have to request a full refund?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "may request a full refund within thirty days of the purchase date",
+          "section": "2. Refunds and Returns"
+        }
+      ],
+      "answerKeywords": [
+        "thirty days"
+      ],
+      "absentTerms": [],
+      "notes": "Shares 'refund' with 2.2 and 2.3; the discriminator is 'full'."
+    },
+    {
+      "id": "q-002",
+      "question": "How many days does a customer have to start a hardware return?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The customer has fourteen days from delivery to start a hardware return",
+          "section": "2.2 Partial Refunds and Restocking"
+        }
+      ],
+      "answerKeywords": [
+        "fourteen days"
+      ],
+      "absentTerms": [],
+      "notes": "Competes with the thirty-day refund window in 2."
+    },
+    {
+      "id": "q-003",
+      "question": "How quickly must support acknowledge a disputed refund?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Support must acknowledge a disputed refund within three business days",
+          "section": "2.3 Refund Disputes"
+        }
+      ],
+      "answerKeywords": [
+        "three business days"
+      ],
+      "absentTerms": [],
+      "notes": "'business days' also appears in 3.2, 8.3 and 12.2."
+    },
+    {
+      "id": "q-004",
+      "question": "What is the first response target for a P1 ticket?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "A P1 ticket must receive its first human response within four hours",
+          "section": "3.2 Ticket Priority and Response Targets"
+        }
+      ],
+      "answerKeywords": [
+        "four hours"
+      ],
+      "absentTerms": [],
+      "notes": "P1/P2/P3 targets all live in one subsection, so ranking within it matters."
+    },
+    {
+      "id": "q-005",
+      "question": "How long can a P3 ticket wait for its first response?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "P3 tickets must receive a first response within two business days",
+          "section": "3.2 Ticket Priority and Response Targets"
+        }
+      ],
+      "answerKeywords": [
+        "two business days"
+      ],
+      "absentTerms": [],
+      "notes": "Same subsection as q-004; distinguishing P1 from P3 is the test."
+    },
+    {
+      "id": "q-006",
+      "question": "How far in advance must travel be booked?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Bookings must be made at least twenty-one days before departure",
+          "section": "4.1 Travel Booking"
+        }
+      ],
+      "answerKeywords": [
+        "twenty-one days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-007",
+      "question": "What is the deadline for submitting an expense claim?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Claims must be submitted within sixty days of the date the cost was incurred",
+          "section": "4.2 Expense Reimbursement"
+        }
+      ],
+      "answerKeywords": [
+        "sixty days"
+      ],
+      "absentTerms": [],
+      "notes": "Deliberately collides with the refund receipt rule on the token 'receipt'."
+    },
+    {
+      "id": "q-008",
+      "question": "Above what amount does an equipment purchase need director approval?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Equipment purchases above seven hundred fifty dollars require director approval",
+          "section": "4.3 Equipment Purchases"
+        }
+      ],
+      "answerKeywords": [
+        "seven hundred fifty dollars"
+      ],
+      "absentTerms": [],
+      "notes": "Collides with the approval thresholds in 7.1."
+    },
+    {
+      "id": "q-009",
+      "question": "How many days of paid annual leave do permanent employees get?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Permanent employees receive twenty-five days of paid annual leave each calendar year",
+          "section": "5.2 Annual Leave"
+        }
+      ],
+      "answerKeywords": [
+        "twenty-five days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-010",
+      "question": "How many public holidays does the company observe?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The company observes eleven public holidays each year",
+          "section": "5.3 Public Holidays"
+        }
+      ],
+      "answerKeywords": [
+        "eleven"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-011",
+      "question": "How long can an initial contractor engagement run?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "An initial contractor engagement may run for at most ninety days",
+          "section": "6.1 Contractor Engagement"
+        }
+      ],
+      "answerKeywords": [
+        "ninety days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-012",
+      "question": "What are the payment terms for contractor invoices?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Invoices are settled on net forty-five day terms",
+          "section": "6.2 Contractor Invoice Payment"
+        }
+      ],
+      "answerKeywords": [
+        "forty-five"
+      ],
+      "absentTerms": [],
+      "notes": "The reseller distractor states net thirty for partner invoices."
+    },
+    {
+      "id": "q-013",
+      "question": "How often are vendors reviewed?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The recurring vendor review runs every eighteen months",
+          "section": "6.3 Vendor Review"
+        }
+      ],
+      "answerKeywords": [
+        "eighteen months"
+      ],
+      "absentTerms": [],
+      "notes": "'review' also means the performance review in 11.1."
+    },
+    {
+      "id": "q-014",
+      "question": "What spending level requires director approval?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Director approval is required for any commitment above five thousand dollars",
+          "section": "7.1 Approval Thresholds"
+        }
+      ],
+      "answerKeywords": [
+        "five thousand dollars"
+      ],
+      "absentTerms": [],
+      "notes": "Competes with the equipment threshold in 4.3."
+    },
+    {
+      "id": "q-015",
+      "question": "How far ahead must a delegate be recorded before planned leave?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Delegation must be recorded at least two weeks before a planned absence begins",
+          "section": "7.2 Delegation During Absence"
+        }
+      ],
+      "answerKeywords": [
+        "two weeks"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-016",
+      "question": "How quickly must a Sev1 incident be acknowledged?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "acknowledged by the on-duty responder within fifteen minutes",
+          "section": "8.1 Incident Severity"
+        }
+      ],
+      "answerKeywords": [
+        "fifteen minutes"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-017",
+      "question": "How often does the incident lead publish status updates?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "the incident lead publishes a status update every one hour",
+          "section": "8.2 Incident Communication"
+        }
+      ],
+      "answerKeywords": [
+        "one hour"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-018",
+      "question": "When must a postmortem be published?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The postmortem must be published within five business days",
+          "section": "8.3 Postmortems"
+        }
+      ],
+      "answerKeywords": [
+        "five business days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-019",
+      "question": "How quickly are new starter accounts provisioned?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "New starter accounts are provisioned within one business day",
+          "section": "9.1 Account Provisioning"
+        }
+      ],
+      "answerKeywords": [
+        "one business day"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-020",
+      "question": "What is the minimum password length?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Passwords must be at least sixteen characters long",
+          "section": "9.2 Authentication"
+        }
+      ],
+      "answerKeywords": [
+        "sixteen characters"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-021",
+      "question": "How long is restricted data retained?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Restricted data is retained for seven years",
+          "section": "9.3 Data Classification and Retention"
+        }
+      ],
+      "answerKeywords": [
+        "seven years"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-022",
+      "question": "How often must office-based employees attend in person?",
+      "type": "lookup",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "attend in person at least two days per week",
+          "section": "10.1 Office Attendance"
+        }
+      ],
+      "answerKeywords": [
+        "two days per week"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-023",
+      "question": "How often are laptops replaced?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Laptops are replaced on a thirty-six month cycle",
+          "section": "10.2 Device Refresh"
+        }
+      ],
+      "answerKeywords": [
+        "thirty-six month"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-024",
+      "question": "How much is the home office stipend?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "home office stipend of four hundred dollars",
+          "section": "10.3 Home Office Stipend"
+        }
+      ],
+      "answerKeywords": [
+        "four hundred dollars"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-025",
+      "question": "How often does the formal performance review happen?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The formal performance review runs every six months",
+          "section": "11.1 Review Cycle"
+        }
+      ],
+      "answerKeywords": [
+        "six months"
+      ],
+      "absentTerms": [],
+      "notes": "'review' collides with the vendor review in 6.3."
+    },
+    {
+      "id": "q-026",
+      "question": "What is the annual development budget per employee?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "annual development budget of twelve hundred dollars",
+          "section": "11.2 Training Budget"
+        }
+      ],
+      "answerKeywords": [
+        "twelve hundred dollars"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-027",
+      "question": "What notice period must a permanent employee give?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Permanent employees give four weeks of written notice",
+          "section": "12.1 Notice Periods"
+        }
+      ],
+      "answerKeywords": [
+        "four weeks"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-028",
+      "question": "When is unreturned equipment recorded as outstanding?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "not returned within ten business days of the final working day",
+          "section": "12.2 Asset Return"
+        }
+      ],
+      "answerKeywords": [
+        "ten business days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-029",
+      "question": "When is final pay paid?",
+      "type": "lookup",
+      "difficulty": "easy",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "It is paid within twenty-eight days of the final working day",
+          "section": "12.3 Final Pay"
+        }
+      ],
+      "answerKeywords": [
+        "twenty-eight days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-030",
+      "question": "Who does a support agent escalate a ticket to first?",
+      "type": "lookup",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "The escalation path runs from the agent to the shift lead",
+          "section": "3.3 Escalation Within Support"
+        }
+      ],
+      "answerKeywords": [
+        "shift lead"
+      ],
+      "absentTerms": [],
+      "notes": "Non-numeric lookup; 'escalation' also appears in 2 and 8."
+    },
+    {
+      "id": "q-031",
+      "question": "If a contractor needs a $900 laptop, who approves it and when do they get paid?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Equipment purchases above seven hundred fifty dollars require director approval",
+          "section": "4.3 Equipment Purchases"
+        },
+        {
+          "phrase": "Invoices are settled on net forty-five day terms",
+          "section": "6.2 Contractor Invoice Payment"
+        }
+      ],
+      "answerKeywords": [
+        "director",
+        "forty-five"
+      ],
+      "absentTerms": [],
+      "notes": "Evidence in two distant sections; needs at least two retrieved chunks."
+    },
+    {
+      "id": "q-032",
+      "question": "A customer alleges billing fraud in a refund dispute. Where does it go and how fast must it be acknowledged?",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Disputes that involve an allegation of billing fraud move immediately to Finance",
+          "section": "2.3 Refund Disputes"
+        },
+        {
+          "phrase": "acknowledged by the on-duty responder within fifteen minutes",
+          "section": "8.1 Incident Severity"
+        }
+      ],
+      "answerKeywords": [
+        "Finance",
+        "fifteen minutes"
+      ],
+      "absentTerms": [],
+      "notes": "Requires following the cross-reference from refunds into incident handling."
+    },
+    {
+      "id": "q-033",
+      "question": "An expense claim is ninety days old. What is needed to reimburse it?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Claims submitted after that window need written approval from a director",
+          "section": "4.2 Expense Reimbursement"
+        },
+        {
+          "phrase": "Director approval is required for any commitment above five thousand dollars",
+          "section": "7.1 Approval Thresholds"
+        }
+      ],
+      "answerKeywords": [
+        "director"
+      ],
+      "absentTerms": [],
+      "notes": "Two different senses of director approval must both be retrieved."
+    },
+    {
+      "id": "q-034",
+      "question": "A new starter joins on Monday. When do they get their account, and how old can their laptop be?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "New starter accounts are provisioned within one business day",
+          "section": "9.1 Account Provisioning"
+        },
+        {
+          "phrase": "Laptops are replaced on a thirty-six month cycle",
+          "section": "10.2 Device Refresh"
+        }
+      ],
+      "answerKeywords": [
+        "one business day",
+        "thirty-six month"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-035",
+      "question": "Someone resigns. How much notice, and how long to return their laptop?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Permanent employees give four weeks of written notice",
+          "section": "12.1 Notice Periods"
+        },
+        {
+          "phrase": "not returned within ten business days of the final working day",
+          "section": "12.2 Asset Return"
+        }
+      ],
+      "answerKeywords": [
+        "four weeks",
+        "ten business days"
+      ],
+      "absentTerms": [],
+      "notes": "Adjacent subsections; tests whether chunking keeps them separable."
+    },
+    {
+      "id": "q-036",
+      "question": "When must a leaver submit expenses, and when is final pay made?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Outstanding expense claims must be submitted before the final working day",
+          "section": "12.3 Final Pay"
+        },
+        {
+          "phrase": "Claims must be submitted within sixty days of the date the cost was incurred",
+          "section": "4.2 Expense Reimbursement"
+        }
+      ],
+      "answerKeywords": [
+        "twenty-eight days"
+      ],
+      "absentTerms": [],
+      "notes": "Pulls the general expense rule together with the leaver-specific one."
+    },
+    {
+      "id": "q-037",
+      "question": "A support agent suspects a security breach in a P1 ticket. Who do they contact and what severity applies?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "suspected security incidents, which go straight to the Security team",
+          "section": "3.3 Escalation Within Support"
+        },
+        {
+          "phrase": "Sev1 means customer data is exposed or a service is entirely unavailable",
+          "section": "8.1 Incident Severity"
+        }
+      ],
+      "answerKeywords": [
+        "Security"
+      ],
+      "absentTerms": [],
+      "notes": "The support escalation path has an explicit exception that must be found."
+    },
+    {
+      "id": "q-038",
+      "question": "A fully remote employee flies to a team gathering. How often is that funded and how early must they book?",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "funded to travel to a team gathering twice a year",
+          "section": "10.1 Office Attendance"
+        },
+        {
+          "phrase": "Bookings must be made at least twenty-one days before departure",
+          "section": "4.1 Travel Booking"
+        }
+      ],
+      "answerKeywords": [
+        "twice a year",
+        "twenty-one days"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-039",
+      "question": "A vendor fails its review and the renewal is a three-year deal. What happens?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "the owning team must produce a remediation plan before the contract is renewed",
+          "section": "6.3 Vendor Review"
+        },
+        {
+          "phrase": "Multi-year commitments always go to the executive team",
+          "section": "7.1 Approval Thresholds"
+        }
+      ],
+      "answerKeywords": [
+        "remediation",
+        "executive team"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-040",
+      "question": "During a Sev1, who talks to customers and who does an agent escalate to?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Customer-facing communication during an incident goes out through the Customer Operations lead",
+          "section": "8.2 Incident Communication"
+        },
+        {
+          "phrase": "The escalation path runs from the agent to the shift lead",
+          "section": "3.3 Escalation Within Support"
+        }
+      ],
+      "answerKeywords": [
+        "Customer Operations lead"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-041",
+      "question": "A contractor engagement is being extended past its initial term. What is required and how are they billed?",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Extending beyond that requires a fresh statement of work",
+          "section": "6.1 Contractor Engagement"
+        },
+        {
+          "phrase": "Contractors invoice monthly in arrears against the statement of work",
+          "section": "6.2 Contractor Invoice Payment"
+        }
+      ],
+      "answerKeywords": [
+        "statement of work"
+      ],
+      "absentTerms": [],
+      "notes": "Adjacent subsections sharing the phrase 'statement of work'."
+    },
+    {
+      "id": "q-042",
+      "question": "Is time spent on an approved course working time, and when are meetings scheduled?",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "expectedSourceFile": "handbook.pdf",
+      "goldAnchors": [
+        {
+          "phrase": "Time spent on approved training is working time",
+          "section": "11.2 Training Budget"
+        },
+        {
+          "phrase": "Core hours are ten in the morning to four in the afternoon",
+          "section": "5.4 Core Hours"
+        }
+      ],
+      "answerKeywords": [
+        "working time"
+      ],
+      "absentTerms": [],
+      "notes": ""
+    },
+    {
+      "id": "q-043",
+      "question": "How do employee stock options vest?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "stock option",
+        "equity"
+      ],
+      "notes": "Equity is deliberately outside the handbook's scope."
+    },
+    {
+      "id": "q-044",
+      "question": "How much parental leave is offered?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "parental leave",
+        "maternity",
+        "paternity"
+      ],
+      "notes": "Leave policy covers annual and sick leave only."
+    },
+    {
+      "id": "q-045",
+      "question": "Does the company provide dental insurance?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "dental"
+      ],
+      "notes": "No benefits schedule appears in the handbook."
+    },
+    {
+      "id": "q-046",
+      "question": "What relocation assistance is available for a move?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "relocation"
+      ],
+      "notes": "Remote work is covered; relocation is not."
+    },
+    {
+      "id": "q-047",
+      "question": "Does the company sponsor work visas?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "visa sponsorship",
+        "visa"
+      ],
+      "notes": "Supported countries are mentioned; immigration is not."
+    },
+    {
+      "id": "q-048",
+      "question": "How is on-call rotation compensated?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "on-call"
+      ],
+      "notes": "Incident duty is described, but never its compensation."
+    },
+    {
+      "id": "q-049",
+      "question": "Can I take a paid sabbatical after five years?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "sabbatical"
+      ],
+      "notes": "Long-service leave is not a handbook topic."
+    },
+    {
+      "id": "q-050",
+      "question": "What is the employer pension contribution rate?",
+      "type": "unanswerable",
+      "difficulty": "medium",
+      "expectedSourceFile": null,
+      "goldAnchors": [],
+      "answerKeywords": [],
+      "absentTerms": [
+        "pension",
+        "retirement"
+      ],
+      "notes": "Payroll mechanics beyond final pay are out of scope."
+    }
+  ]
+}

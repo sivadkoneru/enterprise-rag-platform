@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "note": "Regression floors, calibrated from a measured run minus 0.05. These gate CI: a change that drops retrieval below these values fails the build. Raise them deliberately when a change improves retrieval; never lower them to make a red build green.",
+  "groundednessFloor": 1.0,
+  "citationIntegrityFloor": 1.0,
+  "minChunksPerStrategy": 5,
+  "strategies": {
+    "fixed": {
+      "recall5": 0.688,
+      "mrr5": 0.627,
+      "citationAccuracy1": 0.545,
+      "fullCoverage5": 0.617,
+      "minChunks": 5
+    },
+    "recursive": {
+      "recall5": 0.724,
+      "mrr5": 0.593,
+      "citationAccuracy1": 0.474,
+      "fullCoverage5": 0.664,
+      "minChunks": 5
+    },
+    "markdown-aware": {
+      "recall5": 0.724,
+      "mrr5": 0.601,
+      "citationAccuracy1": 0.474,
+      "fullCoverage5": 0.664,
+      "minChunks": 5
+    },
+    "semantic": {
+      "recall5": 0.569,
+      "mrr5": 0.496,
+      "citationAccuracy1": 0.426,
+      "fullCoverage5": 0.545,
+      "minChunks": 5
+    }
+  }
+}
