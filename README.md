@@ -2,6 +2,12 @@
 
 A generic, plug-and-play Retrieval-Augmented Generation platform for .NET. The platform ingests `txt`, `md`, `pdf`, `html`, and schema-described `csv`/`json`/`jsonl` documents, parses and chunks them, stores documents and chunk metadata in a document store, indexes vectors, and answers grounded questions through separately configured embedding and chat endpoints.
 
+## Demo
+
+Cold clone to a grounded, cited answer — build, start the API, ingest the sample docs, and query — with no Docker, no `.env`, and no API key (in-memory stores, deterministic LLM):
+
+![Cold clone to a grounded, cited answer](docs/demo/quickstart.gif)
+
 ## Status
 
 The solution targets `.NET 10` through `Directory.Build.props`; this machine currently has .NET SDK `10.0.301`.
