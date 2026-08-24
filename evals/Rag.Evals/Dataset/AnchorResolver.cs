@@ -14,16 +14,15 @@ namespace Rag.Evals.Dataset;
 internal sealed class AnchorResolver
 {
     private readonly string _normalized;
-    private readonly int[] _sourceIndex;
+    private readonly int[] _sourceStart;
+    private readonly int[] _sourceEnd;
     private readonly int _rawLength;
 
     public AnchorResolver(string documentText)
     {
-        _normalized = TextNormalization.NormalizeWithMap(documentText, out _sourceIndex);
+        _normalized = TextNormalization.NormalizeWithMap(documentText, out _sourceStart, out _sourceEnd);
         _rawLength = documentText.Length;
     }
-
-    public string NormalizedText => _normalized;
 
     /// <summary>Resolves a phrase to a half-open <c>[start, end)</c> range in the raw document text.</summary>
     public (int Start, int End) Resolve(string phrase)
@@ -49,9 +48,8 @@ internal sealed class AnchorResolver
                 "Extend the phrase until it is unique so the expected evidence is unambiguous.");
         }
 
-        var start = _sourceIndex[first];
-        var lastNormalized = first + needle.Length - 1;
-        var end = _sourceIndex[lastNormalized] + 1;
+        var start = _sourceStart[first];
+        var end = _sourceEnd[first + needle.Length - 1];
         return (start, Math.Min(end, _rawLength));
     }
 

@@ -34,23 +34,29 @@ internal static class TextNormalization
     /// </summary>
     public static string Normalize(string input)
     {
-        return NormalizeWithMap(input, out _);
+        return NormalizeWithMap(input, out _, out _);
     }
 
     /// <summary>
-    /// Normalizes and emits <paramref name="sourceIndex"/>, where <c>sourceIndex[i]</c> is the index
-    /// in <paramref name="input"/> of the character that produced normalized character <c>i</c>.
-    /// That map is what lets a phrase match in normalized space and still yield exact offsets into
-    /// the raw document, which is how gold evidence stays comparable to chunk boundaries.
+    /// Normalizes and emits the offset maps that let a phrase match in normalized space and still
+    /// yield exact offsets into the raw document, which is how gold evidence stays comparable to
+    /// chunk boundaries. <paramref name="sourceStart"/><c>[i]</c> is the first index in
+    /// <paramref name="input"/> of the source span that produced normalized character <c>i</c>, and
+    /// <paramref name="sourceEnd"/><c>[i]</c> is one past its last. The two differ by more than one
+    /// only where NFKC contracted a span — a base letter plus a combining acute becoming a single
+    /// precomposed character — and taking the end from the start map there would report a range one
+    /// character short of the text that actually matched.
     /// </summary>
-    public static string NormalizeWithMap(string input, out int[] sourceIndex)
+    public static string NormalizeWithMap(string input, out int[] sourceStart, out int[] sourceEnd)
     {
         var builder = new StringBuilder(input.Length);
-        var map = new List<int>(input.Length);
+        var starts = new List<int>(input.Length);
+        var ends = new List<int>(input.Length);
         var pendingWhitespace = false;
         var pendingWhitespaceAt = 0;
 
-        for (var index = 0; index < input.Length; index++)
+        var index = 0;
+        while (index < input.Length)
         {
             var character = input[index];
             if (char.IsWhiteSpace(character))
@@ -61,6 +67,7 @@ internal static class TextNormalization
                     pendingWhitespaceAt = index;
                 }
 
+                index++;
                 continue;
             }
 
@@ -71,29 +78,126 @@ internal static class TextNormalization
                 if (builder.Length > 0)
                 {
                     builder.Append(' ');
-                    map.Add(pendingWhitespaceAt);
+                    starts.Add(pendingWhitespaceAt);
+                    ends.Add(pendingWhitespaceAt + 1);
                 }
 
                 pendingWhitespace = false;
             }
 
-            foreach (var mapped in MapCharacter(character))
+            // Fast path: an ASCII character with no combining mark after it is already in NFKC, so
+            // the whole corpus skips the per-cluster allocation below.
+            if (char.IsAscii(character) && !FollowedByCombiningMark(input, index))
             {
-                builder.Append(mapped);
-                map.Add(index);
+                Append(builder, starts, ends, Fold(character), index, index + 1);
+                index++;
+                continue;
             }
+
+            var length = ClusterLength(input, index);
+            foreach (var composed in Compose(input.AsSpan(index, length)))
+            {
+                Append(builder, starts, ends, Fold(composed), index, index + length);
+            }
+
+            index += length;
         }
 
-        sourceIndex = [.. map];
+        sourceStart = [.. starts];
+        sourceEnd = [.. ends];
         return builder.ToString();
     }
 
+    private static void Append(
+        StringBuilder builder,
+        List<int> starts,
+        List<int> ends,
+        ReadOnlySpan<char> mapped,
+        int start,
+        int end)
+    {
+        foreach (var character in mapped)
+        {
+            builder.Append(character);
+            starts.Add(start);
+            ends.Add(end);
+        }
+    }
+
     /// <summary>
-    /// Folds typographic characters to their ASCII equivalents and lowercases. Returns a short
-    /// sequence because a single source character can normalize to more than one (an ellipsis
-    /// becomes three periods), and the offset map has to stay aligned when it does.
+    /// Applies NFKC to one base character plus the combining marks attached to it.
+    ///
+    /// Normalization runs per cluster rather than over the whole string because the offset map has
+    /// to stay aligned with the raw text: NFKC both expands (an ellipsis becomes three periods) and
+    /// contracts (a letter plus a combining acute becomes one precomposed character), and every
+    /// character it produces is attributed to the cluster that produced it. Without this a gold
+    /// phrase authored with a precomposed "é" would fail to match a PDF that extracted the
+    /// decomposed form, and the failure would surface as "gold anchor not found" — corpus drift
+    /// rather than the normalization gap it actually is.
     /// </summary>
-    private static ReadOnlySpan<char> MapCharacter(char character)
+    private static string Compose(ReadOnlySpan<char> cluster)
+    {
+        var text = new string(cluster);
+
+        // string.Normalize throws on an unpaired surrogate, which is not text and cannot be folded.
+        return IsWellFormed(text) ? text.Normalize(NormalizationForm.FormKC) : text;
+    }
+
+    private static bool IsWellFormed(string text)
+    {
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (!char.IsSurrogate(text[index]))
+            {
+                continue;
+            }
+
+            if (!char.IsHighSurrogate(text[index]) || index + 1 >= text.Length || !char.IsLowSurrogate(text[index + 1]))
+            {
+                return false;
+            }
+
+            index++;
+        }
+
+        return true;
+    }
+
+    /// <summary>Length in chars of the base character at <paramref name="start"/> plus its combining marks.</summary>
+    private static int ClusterLength(string input, int start)
+    {
+        var length = char.IsHighSurrogate(input[start]) && start + 1 < input.Length && char.IsLowSurrogate(input[start + 1])
+            ? 2
+            : 1;
+
+        while (start + length < input.Length && IsCombiningMark(input[start + length]))
+        {
+            length++;
+        }
+
+        return length;
+    }
+
+    private static bool FollowedByCombiningMark(string input, int index)
+    {
+        return index + 1 < input.Length && IsCombiningMark(input[index + 1]);
+    }
+
+    private static bool IsCombiningMark(char character)
+    {
+        return CharUnicodeInfo.GetUnicodeCategory(character)
+            is UnicodeCategory.NonSpacingMark
+            or UnicodeCategory.SpacingCombiningMark
+            or UnicodeCategory.EnclosingMark;
+    }
+
+    /// <summary>
+    /// Lowercases and folds the typographic punctuation NFKC leaves alone — curly quotes and the
+    /// dash family are distinct characters, not compatibility variants, so a phrase typed with an
+    /// ASCII apostrophe would otherwise never match a document that renders a right single quote.
+    /// Returns a sequence because one source character can fold to more than one.
+    /// </summary>
+    private static ReadOnlySpan<char> Fold(char character)
     {
         switch (character)
         {
@@ -116,8 +220,6 @@ internal static class TextNormalization
                 return "-";
             case '…':
                 return "...";
-            case ' ':
-                return " ";
             default:
                 break;
         }
@@ -165,10 +267,5 @@ internal static class TextNormalization
         {
             tokens.Add(token);
         }
-    }
-
-    public static string Round(double value)
-    {
-        return Math.Round(value, 4).ToString("0.0###", CultureInfo.InvariantCulture);
     }
 }

@@ -53,7 +53,13 @@ internal sealed record GoldenDataset(
     [property: JsonPropertyName("primaryDocument")] string PrimaryDocument,
     [property: JsonPropertyName("questions")] IReadOnlyList<GoldenQuestion> Questions);
 
-/// <summary>A question whose anchors have been located in the parsed corpus.</summary>
-internal sealed record ResolvedAnchor(GoldAnchor Anchor, int Start, int End);
+/// <summary>
+/// A gold phrase located in the parsed corpus.
+///
+/// <paramref name="SourceFile"/> travels with the offsets because they are offsets into one
+/// document's text: an interval from a different document is not comparable to them, and treating
+/// it as if it were would let a distractor chunk "cover" handbook evidence it never contained.
+/// </summary>
+internal sealed record ResolvedAnchor(GoldAnchor Anchor, string SourceFile, int Start, int End);
 
 internal sealed record ResolvedQuestion(GoldenQuestion Question, IReadOnlyList<ResolvedAnchor> Anchors);

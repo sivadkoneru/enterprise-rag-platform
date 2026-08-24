@@ -64,4 +64,31 @@ public sealed class AnchorResolverTests
 
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void NormalizationComposesDecomposedCharactersSoAnchorsStillResolve()
+    {
+        // A PDF font subset can extract "e" followed by a combining acute where the phrase was
+        // authored with the precomposed character. Without NFKC the anchor would fail to resolve and
+        // the failure would read as corpus drift rather than a normalization gap. Both forms are
+        // written as escapes here so an editor cannot quietly normalize the test's own input.
+        const string document = "Report by Rene\u0301 Dupont.";
+        var resolver = new AnchorResolver(document);
+
+        var (start, end) = resolver.Resolve("by Ren\u00e9");
+
+        document[start..end].Should().Be("by Rene\u0301", "the range must cover the combining mark too");
+    }
+
+    [Fact]
+    public void NormalizationFoldsCompatibilityCharactersSuchAsLigatures()
+    {
+        // Ligatures and full-width digits arrive from PDF font subsets; NFKC is what makes a phrase
+        // typed with ordinary characters match them.
+        var resolver = new AnchorResolver("The ﬁnal payment is ５０ dollars.");
+
+        var act = () => resolver.Resolve("the final payment is 50 dollars.");
+
+        act.Should().NotThrow();
+    }
 }

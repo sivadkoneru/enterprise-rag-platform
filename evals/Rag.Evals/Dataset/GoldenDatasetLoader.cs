@@ -10,8 +10,9 @@ namespace Rag.Evals.Dataset;
 /// Loading is where the dataset proves it still describes reality: every anchor must resolve to
 /// exactly one span, and every <c>absentTerms</c> entry must genuinely be absent. Both checks exist
 /// because the failure they catch is silent — an unresolvable anchor scores as a permanently missed
-/// question, and an "unanswerable" question whose subject was later added to the handbook quietly
-/// starts punishing correct behavior.
+/// question, and an "unanswerable" question whose subject was later added to the corpus quietly
+/// starts punishing correct behavior. Both are checked against every ingested document, distractors
+/// included, because every ingested document is retrievable.
 /// </summary>
 internal static class GoldenDatasetLoader
 {
@@ -32,7 +33,7 @@ internal static class GoldenDatasetLoader
     }
 
     /// <summary>Resolves every anchor against the corpus, throwing on the first broken label.</summary>
-    public static IReadOnlyList<ResolvedQuestion> Resolve(GoldenDataset dataset, AnchorResolver resolver)
+    public static IReadOnlyList<ResolvedQuestion> Resolve(GoldenDataset dataset, CorpusIndex corpus)
     {
         var seenIds = new HashSet<string>(StringComparer.Ordinal);
         var resolved = new List<ResolvedQuestion>(dataset.Questions.Count);
@@ -56,11 +57,12 @@ internal static class GoldenDatasetLoader
 
             foreach (var term in question.AbsentTerms)
             {
-                if (resolver.Contains(term))
+                var containingFile = corpus.FindDocumentContaining(term);
+                if (containingFile is not null)
                 {
                     throw new InvalidDataException(
-                        $"Question '{question.Id}' is marked unanswerable, but the corpus now contains '{term}'. " +
-                        "Either the handbook gained a topic it should not have, or the question is no longer unanswerable.");
+                        $"Question '{question.Id}' is marked unanswerable, but '{containingFile}' now contains '{term}'. " +
+                        "Either that document gained a topic it should not have, or the question is no longer unanswerable.");
                 }
             }
 
@@ -69,8 +71,7 @@ internal static class GoldenDatasetLoader
             {
                 try
                 {
-                    var (start, end) = resolver.Resolve(anchor.Phrase);
-                    anchors.Add(new ResolvedAnchor(anchor, start, end));
+                    anchors.Add(corpus.Resolve(anchor));
                 }
                 catch (InvalidOperationException exception)
                 {

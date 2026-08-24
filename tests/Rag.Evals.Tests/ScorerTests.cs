@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Rag.Core.Llm;
 using Rag.Core.Models;
 using Rag.Evals.Dataset;
 using Rag.Evals.Scoring;
@@ -8,14 +9,20 @@ namespace Rag.Evals.Tests;
 
 public sealed class ScorerTests
 {
-    private static readonly DocumentMetadata Metadata =
+    private static readonly DocumentMetadata _metadata =
         new("doc", "/corpus/handbook.pdf", "handbook.pdf", "pdf", "application/pdf", 100, DateTimeOffset.UnixEpoch);
 
+    private static readonly DocumentMetadata _distractorMetadata =
+        new("other", "/corpus/reseller-handbook.md", "reseller-handbook.md", "md", "text/markdown", 100, DateTimeOffset.UnixEpoch);
+
     private static TextChunk Chunk(string text, int start, int end, int index = 0) =>
-        new($"doc:test:{index:D5}", "doc", index, text, start, end, Metadata);
+        new($"doc:test:{index:D5}", "doc", index, text, start, end, _metadata);
+
+    private static TextChunk DistractorChunk(string text, int start, int end, int index = 0) =>
+        new($"other:test:{index:D5}", "other", index, text, start, end, _distractorMetadata);
 
     private static ResolvedAnchor Anchor(string phrase, int start, int end) =>
-        new(new GoldAnchor(phrase, "section"), start, end);
+        new(new GoldAnchor(phrase, "section"), "handbook.pdf", start, end);
 
     [Fact]
     public void CoversIgnoresWhitespaceDifferencesBetweenChunkAndPhrase()
@@ -51,6 +58,28 @@ public sealed class ScorerTests
     }
 
     [Fact]
+    public void CoversRejectsAMatchInADifferentDocument()
+    {
+        // The distractors restate handbook policy in conflicting terms. A phrase match in one of
+        // them is a retrieval mistake, so crediting it would reward exactly the wrong behavior.
+        var distractor = DistractorChunk("Claims must be submitted within sixty days of the cost.", 0, 54);
+
+        Scorers.Covers(distractor, Anchor("submitted within sixty days", 25, 52)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void UnionCoversIgnoresIntervalsFromOtherDocuments()
+    {
+        // Offsets are offsets into one document's text. A distractor chunk spanning [0, 800) would
+        // otherwise "cover" any handbook anchor inside that range and inflate recall for evidence
+        // that was never retrieved.
+        var distractor = DistractorChunk("Unrelated reseller policy text.", 0, 800);
+
+        Scorers.UnionCovers([distractor], Anchor("submitted within sixty days", 15, 46)).Should().BeFalse();
+        Scorers.Found([distractor], Anchor("submitted within sixty days", 15, 46)).Should().BeFalse();
+    }
+
+    [Fact]
     public void FirstRelevantRankIsOneBasedAndZeroWhenNothingMatches()
     {
         var hit = Chunk("within sixty days", 0, 17, 1);
@@ -69,7 +98,7 @@ public sealed class ScorerTests
         var chunk = Chunk("Refunds require a receipt.", 0, 26);
 
         var (score, ungrounded) = Scorers.Groundedness(
-            "Based on the retrieved context, quantum wombats authorise refunds.", [chunk]);
+            $"{DeterministicLlmClient.AnswerPrefix} quantum wombats authorise refunds.", [chunk]);
 
         score.Should().BeLessThan(1);
         ungrounded.Should().Contain("wombats");

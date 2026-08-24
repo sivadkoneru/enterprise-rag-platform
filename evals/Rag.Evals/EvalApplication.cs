@@ -2,8 +2,6 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Globalization;
 using System.Text;
-using Microsoft.Extensions.Logging.Abstractions;
-using Rag.Core.Parsing;
 using Rag.Evals.Corpus;
 using Rag.Evals.Dataset;
 using Rag.Evals.Composition;
@@ -79,9 +77,8 @@ internal static class EvalApplication
         validate.SetHandler(context => RunSafely(context, async () =>
         {
             var dataset = GoldenDatasetLoader.Load(context.ParseResult.GetValueForOption(datasetOption));
-            var corpus = await ParseAsync(RepoPaths.HandbookPdf).ConfigureAwait(false);
-            var resolver = new AnchorResolver(corpus);
-            var resolved = GoldenDatasetLoader.Resolve(dataset, resolver);
+            var corpus = await BuildCorpusIndexAsync().ConfigureAwait(false);
+            var resolved = GoldenDatasetLoader.Resolve(dataset, corpus);
 
             Console.WriteLine("id\ttype\tdeclared\tmeasured\toverlap\tanchors");
             var mismatches = 0;
@@ -187,35 +184,48 @@ internal static class EvalApplication
     internal static async Task<EvalRun> ExecuteAsync(string? datasetPath)
     {
         var dataset = GoldenDatasetLoader.Load(datasetPath);
-        var corpus = await ParseAsync(RepoPaths.HandbookPdf).ConfigureAwait(false);
-        var resolved = GoldenDatasetLoader.Resolve(dataset, new AnchorResolver(corpus));
-
-        var distractors = Directory.Exists(RepoPaths.Distractors)
-            ? Directory.GetFiles(RepoPaths.Distractors, "*.md").OrderBy(path => path, StringComparer.Ordinal).ToArray()
-            : [];
-        var corpusPaths = new List<string> { RepoPaths.HandbookPdf };
-        corpusPaths.AddRange(distractors);
+        var corpusPaths = CorpusPaths();
+        var resolved = GoldenDatasetLoader.Resolve(dataset, await BuildCorpusIndexAsync().ConfigureAwait(false));
 
         var profile = RunProfile.Default([.. corpusPaths.Select(Path.GetFileName).Where(name => name is not null).Cast<string>()]);
         return await EvalRunner.RunAsync(profile, corpusPaths, resolved).ConfigureAwait(false);
     }
 
-    internal static async Task<string> ParseAsync(string path)
+    /// <summary>
+    /// Every document the eval ingests: the handbook first, then the distractors in a fixed order so
+    /// document ordering — and therefore chunk indexing — is identical run to run.
+    /// </summary>
+    internal static IReadOnlyList<string> CorpusPaths()
     {
-        if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        var paths = new List<string> { RepoPaths.HandbookPdf };
+        if (Directory.Exists(RepoPaths.Distractors))
         {
-            var parsed = await new PdfDocumentParser(NullLogger<PdfDocumentParser>.Instance)
-                .ParseAsync(path)
-                .ConfigureAwait(false);
-            return parsed.Text;
+            paths.AddRange(Directory
+                .GetFiles(RepoPaths.Distractors, "*.md")
+                .OrderBy(path => path, StringComparer.Ordinal));
         }
 
-        if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        return paths;
+    }
+
+    /// <summary>Parses every corpus document and indexes it for anchor resolution.</summary>
+    internal static async Task<CorpusIndex> BuildCorpusIndexAsync(CancellationToken cancellationToken = default)
+    {
+        using var parser = CorpusParser.Create();
+        var documents = new List<CorpusDocument>();
+        foreach (var path in CorpusPaths())
         {
-            return (await new MarkdownDocumentParser().ParseAsync(path).ConfigureAwait(false)).Text;
+            var text = await parser.ParseAsync(path, cancellationToken).ConfigureAwait(false);
+            documents.Add(new CorpusDocument(Path.GetFileName(path), new AnchorResolver(text)));
         }
 
-        return (await new TxtDocumentParser().ParseAsync(path).ConfigureAwait(false)).Text;
+        return new CorpusIndex(documents, Path.GetFileName(RepoPaths.HandbookPdf));
+    }
+
+    internal static async Task<string> ParseAsync(string path, CancellationToken cancellationToken = default)
+    {
+        using var parser = CorpusParser.Create();
+        return await parser.ParseAsync(path, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Annotates each line with the character offset it starts at, for authoring anchors.</summary>

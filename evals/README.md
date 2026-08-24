@@ -27,10 +27,14 @@ dotnet run --project evals/Rag.Evals -- report --write      # regenerate results
 
 ## What this measures, and what it does not
 
-Scoring runs on `LLM_PROVIDER=deterministic`, so CI needs no API key and every number is
-reproducible. The deterministic chat client answers with a sentence copied out of the retrieved
-context, which means these metrics describe **retrieval and citation quality** — the thing chunking
-actually controls — and not answer fluency or reasoning. That is a deliberate bound, stated here so
+Scoring always runs on the deterministic provider, so CI needs no API key and every number is
+reproducible. That is pinned in the run profile and printed with the results, not read from the
+environment: the harness builds its whole configuration from an explicit dictionary, so setting
+`LLM_PROVIDER` around it changes nothing.
+
+The deterministic chat client answers with a sentence copied out of the retrieved context, which
+means these metrics describe **retrieval and citation quality** — the thing chunking actually
+controls — and not answer fluency or reasoning. That is a deliberate bound, stated here so
 the numbers are not read as something they are not.
 
 ## The corpus
@@ -45,11 +49,19 @@ single source of truth; `HandbookPdfWriter` renders it. Three properties are loa
   discriminate rather than match a word that occurs once.
 - **The excluded topics never appear.** Equity, parental leave, dental cover, relocation, visa
   sponsorship, on-call pay, sabbaticals and pensions are absent by design, which is what makes the
-  unanswerable questions genuinely unanswerable. The loader asserts their absence.
+  unanswerable questions genuinely unanswerable. Each unanswerable question names the terms that
+  prove it, in its `absentTerms`, and the loader asserts each one is absent from **every** ingested
+  document — distractors included, since those are retrievable too.
 
 The two files in `corpus/distractors/` state conflicting numbers (sixty-day refunds, a five hundred
 dollar purchase limit, net thirty terms). Without them, "did the citation point at the right
 document" is satisfied for free by a single-document corpus.
+
+Because they are part of the corpus, they also take part in dataset validation: a gold phrase that
+appears in a distractor as well as the handbook is rejected as ambiguous, and coverage is only ever
+credited to a chunk from the document the anchor was resolved in. Chunk offsets are offsets into one
+document's text, so merging intervals across documents would let a distractor chunk "cover" handbook
+evidence that was never retrieved.
 
 The PDF's layout constants are functional. PdfPig reconstructs structure from baseline gaps, so the
 line leading and paragraph spacing decide whether the extracted text contains blank lines at all.
@@ -81,6 +93,11 @@ filesystem path — so a chunk id means something different on every machine and
 A phrase is stable across both and is resolved to character offsets at load time, which is what lets
 the same label be scored against four different chunkings.
 
+For the same reason no chunk id is ever written to `results/latest.json`. Retrieved evidence is
+recorded as `{fileName}#{index}`, which says the same thing about what came back and is identical on
+every machine — committing the ids themselves would make the artifact differ per checkout path and
+turn the CI staleness gate below permanently red.
+
 Anchors are authored by copy-paste from `dump-text` output, never from the generator source: PDF
 rendering and extraction round-trip whitespace, so only the extracted form is authoritative.
 
@@ -105,7 +122,7 @@ Coverage is judged two ways:
 | `MRR@5` | Mean reciprocal rank of the first chunk that contains an anchor outright. |
 | `Citation acc@1` | Top citation names the expected file **and** its chunk contains an anchor. |
 | `Citation prec@5` | Share of returned citations whose chunk contains an anchor. Punishes over-retrieval. |
-| `Citation integrity` | Invariant, not a score. Every citation hydrates and its index and document match its chunk. Must be 1.000. |
+| `Citation integrity` | Invariant, not a score. Every citation hydrates and its index and document match its chunk. Measured over citations *issued*, so a run where nothing hydrates scores 0.000. Must be 1.000. |
 | `Groundedness` | Share of answer content tokens present in the retrieved context, after stripping the deterministic client's fixed prefix. |
 | `Answer-kw` | All answer keywords present. Under the deterministic client this measures chunk **boundary placement**: whether the top chunk starts at the answer. |
 | `Index embed calls` | Embedding calls made during ingestion. Semantic chunking embeds every paragraph, so its index cost is structurally higher. |
@@ -143,10 +160,12 @@ the same chunk is exactly what the four strategies disagree about.
 ## Reproducibility
 
 The committed artifacts must be byte-stable, because CI regenerates them and fails on any diff.
-Everything is rounded to four decimal places, formatted with invariant culture, and written with
-explicit `\n` line endings (the repository has no `.gitattributes`, so `Environment.NewLine` would
-produce CRLF on Windows and a permanently dirty tree). No timestamps are written. Ingestion runs
-single-threaded so chunk indices are identical run to run.
+Every number is rounded to four decimal places — per-question values on the way into the result
+record, not only the aggregates, since both are serialized — formatted with invariant culture, and
+written with explicit `\n` line endings (the repository has no `.gitattributes`, so
+`Environment.NewLine` would produce CRLF on Windows and a permanently dirty tree). No timestamps are
+written, nothing path-derived is written, and ingestion runs single-threaded so chunk indices are
+identical run to run.
 
 `EvalHost` builds its configuration from an explicit dictionary and deliberately does **not** call
 `EnvFile.LoadFromWorkingDirectory`, which the CLI and API use. That helper walks up the directory

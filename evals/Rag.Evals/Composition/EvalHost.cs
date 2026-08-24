@@ -45,9 +45,8 @@ internal sealed class EvalHost : IDisposable
             ["CHUNK_SIZE"] = profile.ChunkSize.ToString(CultureInfo.InvariantCulture),
             ["CHUNK_OVERLAP"] = profile.ChunkOverlap.ToString(CultureInfo.InvariantCulture),
 
-            // Set explicitly rather than inherited: .env.example documents
-            // SEMANTIC_CHUNKING_SIMILARITY_THRESHOLD=0.78, which binds to a *distance* field whose
-            // default is 0.22. Inheriting that would silently benchmark a different algorithm.
+            // Set explicitly rather than left to the core default, so the published benchmark states
+            // the cut policy it measured instead of tracking whatever that default happens to be.
             ["SEMANTIC_DISTANCE_THRESHOLD"] = profile.SemanticDistanceThreshold.ToString(CultureInfo.InvariantCulture),
             ["LLM_EMBEDDING_DIMENSIONS"] = profile.EmbeddingDimensions.ToString(CultureInfo.InvariantCulture),
 
@@ -99,12 +98,6 @@ internal sealed class EmbeddingCallCounter
     {
         Calls++;
         Characters += characterCount;
-    }
-
-    public void Reset()
-    {
-        Calls = 0;
-        Characters = 0;
     }
 }
 

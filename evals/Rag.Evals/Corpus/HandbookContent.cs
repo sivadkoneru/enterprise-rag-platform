@@ -12,8 +12,10 @@ namespace Rag.Evals.Corpus;
 /// <item>Terms collide across sections on purpose ("receipt" in 2.1 and 4.2, "approval" in 4.3 and
 /// 7.1, "review" in 6.3 and 11.1), so retrieval has to do real work rather than matching a term
 /// that appears once.</item>
-/// <item>The topics listed in <see cref="ExcludedTopics"/> appear nowhere, which is what makes the
-/// unanswerable questions genuinely unanswerable.</item>
+/// <item>The subjects named in each unanswerable question's <c>absentTerms</c> appear nowhere,
+/// which is what makes those questions genuinely unanswerable. That list lives in
+/// <c>Data/golden.json</c> and the dataset loader proves the absence against every ingested
+/// document, so adding one of those subjects here fails the load with the term named.</item>
 /// </list>
 ///
 /// Gold anchors are authored from the <c>dump-text</c> output, never from this file: PDF rendering
@@ -29,22 +31,6 @@ internal static class HandbookContent
     /// than PDF syntax, so the writer refuses to emit a handbook that breaks it across lines.
     /// </summary>
     public const string RequiredSentence = "refunds require a receipt within thirty days.";
-
-    /// <summary>
-    /// Subjects deliberately kept out of the handbook. The unanswerable questions draw from this
-    /// list, and the dataset loader asserts none of these terms appear in the parsed corpus.
-    /// </summary>
-    public static readonly IReadOnlyList<string> ExcludedTopics =
-    [
-        "stock option",
-        "equity vesting",
-        "parental leave",
-        "dental",
-        "relocation",
-        "visa sponsorship",
-        "on-call pay",
-        "sabbatical"
-    ];
 
     public static readonly IReadOnlyList<HandbookSection> Sections =
     [

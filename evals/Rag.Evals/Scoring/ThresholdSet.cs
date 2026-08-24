@@ -8,8 +8,7 @@ internal sealed record StrategyThresholds(
     [property: JsonPropertyName("recall5")] double Recall5,
     [property: JsonPropertyName("mrr5")] double Mrr5,
     [property: JsonPropertyName("citationAccuracy1")] double CitationAccuracy1,
-    [property: JsonPropertyName("fullCoverage5")] double FullCoverage5,
-    [property: JsonPropertyName("minChunks")] int MinChunks);
+    [property: JsonPropertyName("fullCoverage5")] double FullCoverage5);
 
 /// <summary>
 /// The committed regression floors.

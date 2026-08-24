@@ -65,7 +65,7 @@ public sealed class ChunkingBenchmarkTests(EvalFixture fixture)
         foreach (var report in fixture.Run.Strategies)
         {
             report.Outcomes.Should().HaveCount(fixture.Run.QuestionCount);
-            report.Outcomes.Should().OnlyContain(outcome => outcome.RetrievedChunkIds.Count > 0);
+            report.Outcomes.Should().OnlyContain(outcome => outcome.RetrievedChunks.Count > 0);
         }
     }
 }

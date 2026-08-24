@@ -211,8 +211,9 @@ dotnet run --project evals/Rag.Evals -- run             # score all four chunkin
 dotnet run --project evals/Rag.Evals -- report --write  # regenerate the tables below
 ```
 
-Scoring runs entirely on `LLM_PROVIDER=deterministic`, so CI needs no API key and results are
-reproducible. That choice bounds what these numbers mean: they measure **retrieval and citation
+Scoring runs entirely on the deterministic provider — pinned in the run profile and printed with the
+results rather than read from the environment — so CI needs no API key and results are reproducible.
+That choice bounds what these numbers mean: they measure **retrieval and citation
 quality**, which is what chunking actually controls, not generation quality.
 
 <!-- BEGIN:EVAL-PROFILE -->

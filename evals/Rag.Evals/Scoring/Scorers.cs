@@ -1,3 +1,4 @@
+using Rag.Core.Llm;
 using Rag.Core.Models;
 using Rag.Evals.Dataset;
 
@@ -9,16 +10,23 @@ namespace Rag.Evals.Scoring;
 /// </summary>
 internal static class Scorers
 {
+    /// <summary>Rounding applied to every published number, so the committed artifacts stay stable.</summary>
+    public static double Round(double value) => Math.Round(value, 4);
+
     /// <summary>
-    /// True when a single chunk contains the evidence phrase outright.
+    /// True when a single chunk from the anchor's own document contains the evidence phrase
+    /// outright.
     ///
     /// This is the authoritative notion of "the model saw the evidence", because a chunk is what
-    /// gets pasted into the prompt as one block.
+    /// gets pasted into the prompt as one block. The document check matters because the corpus
+    /// contains distractors that deliberately restate handbook policy in different terms: a phrase
+    /// match in one of those is a retrieval mistake, not evidence.
     /// </summary>
     public static bool Covers(TextChunk chunk, ResolvedAnchor anchor)
     {
-        return TextNormalization.Normalize(chunk.Text)
-            .Contains(TextNormalization.Normalize(anchor.Anchor.Phrase), StringComparison.Ordinal);
+        return IsFromAnchorDocument(chunk, anchor)
+            && TextNormalization.Normalize(chunk.Text)
+                .Contains(TextNormalization.Normalize(anchor.Anchor.Phrase), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -27,10 +35,15 @@ internal static class Scorers
     /// boundary; without this the metric would punish a retriever that actually returned everything
     /// needed. Tracked separately as the fragmentation rate, since evidence split across two blocks
     /// is genuinely worse than evidence delivered whole.
+    ///
+    /// Only chunks from the anchor's own document take part. Offsets are offsets into one
+    /// document's text, so merging a distractor's [0, 800) with a handbook anchor's range would
+    /// "cover" evidence that was never retrieved and silently inflate recall.
     /// </summary>
     public static bool UnionCovers(IReadOnlyList<TextChunk> chunks, ResolvedAnchor anchor)
     {
         var intervals = chunks
+            .Where(chunk => IsFromAnchorDocument(chunk, anchor))
             .Select(chunk => (Start: chunk.StartOffset, End: chunk.EndOffset))
             .OrderBy(interval => interval.Start)
             .ToList();
@@ -63,6 +76,11 @@ internal static class Scorers
         return chunks.Any(chunk => Covers(chunk, anchor)) || UnionCovers(chunks, anchor);
     }
 
+    private static bool IsFromAnchorDocument(TextChunk chunk, ResolvedAnchor anchor)
+    {
+        return string.Equals(chunk.Metadata.FileName, anchor.SourceFile, StringComparison.Ordinal);
+    }
+
     /// <summary>1-based rank of the first chunk that contains any anchor outright; 0 when none does.</summary>
     public static int FirstRelevantRank(IReadOnlyList<TextChunk> chunks, IReadOnlyList<ResolvedAnchor> anchors)
     {
@@ -91,9 +109,8 @@ internal static class Scorers
         string answer,
         IReadOnlyList<TextChunk> chunks)
     {
-        const string DeterministicPrefix = "Based on the retrieved context,";
-        var stripped = answer.StartsWith(DeterministicPrefix, StringComparison.Ordinal)
-            ? answer[DeterministicPrefix.Length..]
+        var stripped = answer.StartsWith(DeterministicLlmClient.AnswerPrefix, StringComparison.Ordinal)
+            ? answer[DeterministicLlmClient.AnswerPrefix.Length..]
             : answer;
 
         var answerTokens = TextNormalization.Tokenize(stripped);

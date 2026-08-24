@@ -2,12 +2,23 @@ using Rag.Evals.Dataset;
 
 namespace Rag.Evals.Scoring;
 
-/// <summary>Everything one question produced under one chunking strategy.</summary>
+/// <summary>
+/// Everything one question produced under one chunking strategy.
+///
+/// <paramref name="RetrievedChunks"/> holds <c>{fileName}#{index}</c> rather than chunk ids. A chunk
+/// id embeds a document id derived from an absolute filesystem path, so committing one would make
+/// the published artifact differ on every machine and turn the CI staleness gate permanently red.
+/// The file-and-index form says the same thing about which evidence came back and is stable.
+///
+/// Every double here is rounded on the way in, for the same reason: these values are serialized
+/// into a committed artifact that CI regenerates and diffs, and a raw double carries bits that can
+/// differ between a developer's machine and the runner.
+/// </summary>
 internal sealed record QuestionOutcome(
     string QuestionId,
     QuestionType Type,
     Difficulty Difficulty,
-    IReadOnlyList<string> RetrievedChunkIds,
+    IReadOnlyList<string> RetrievedChunks,
     int AnchorCount,
     int AnchorsFoundAt1,
     int AnchorsFoundAt3,
@@ -33,9 +44,9 @@ internal sealed record QuestionOutcome(
 
     public double FragmentationRate => Ratio(AnchorsFoundByUnionOnly);
 
-    public double ReciprocalRank => FirstRelevantRank <= 0 ? 0 : 1.0 / FirstRelevantRank;
+    public double ReciprocalRank => FirstRelevantRank <= 0 ? 0 : Scorers.Round(1.0 / FirstRelevantRank);
 
-    private double Ratio(int found) => AnchorCount == 0 ? 0 : (double)found / AnchorCount;
+    private double Ratio(int found) => AnchorCount == 0 ? 0 : Scorers.Round((double)found / AnchorCount);
 }
 
 /// <summary>Aggregate metrics for one chunking strategy over the whole dataset.</summary>

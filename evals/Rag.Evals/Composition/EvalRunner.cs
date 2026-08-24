@@ -1,3 +1,4 @@
+using System.Globalization;
 using Rag.Core.Abstractions;
 using Rag.Core.Models;
 using Rag.Evals.Dataset;
@@ -52,6 +53,7 @@ internal static class EvalRunner
 
         var outcomes = new List<QuestionOutcome>(questions.Count);
         var integrityFailures = 0;
+        var citationCount = 0;
 
         foreach (var resolved in questions)
         {
@@ -62,6 +64,7 @@ internal static class EvalRunner
                 .ConfigureAwait(false);
 
             var retrieved = await HydrateAsync(documentStore, answer.Citations, cancellationToken).ConfigureAwait(false);
+            citationCount += answer.Citations.Count;
             integrityFailures += CountIntegrityFailures(answer.Citations, retrieved);
 
             int FoundWithin(int k)
@@ -88,11 +91,13 @@ internal static class EvalRunner
             var zScore = await SupportZScoreAsync(
                 embeddingClient, vectorStore, question.Question, allChunks.Count, cancellationToken).ConfigureAwait(false);
 
+            var roundedZScore = Scorers.Round(zScore);
+
             outcomes.Add(new QuestionOutcome(
                 question.Id,
                 question.Type,
                 question.Difficulty,
-                [.. retrieved.Select(chunk => chunk.Id)],
+                [.. retrieved.Select(ChunkReference)],
                 resolved.Anchors.Count,
                 FoundWithin(1),
                 FoundWithin(3),
@@ -100,16 +105,25 @@ internal static class EvalRunner
                 fragmented,
                 Scorers.FirstRelevantRank(retrieved, resolved.Anchors),
                 topCitationCorrect,
-                retrieved.Count == 0 ? 0 : (double)relevantRetrieved / retrieved.Count,
-                groundedness,
+                retrieved.Count == 0 ? 0 : Scorers.Round((double)relevantRetrieved / retrieved.Count),
+                Scorers.Round(groundedness),
                 ungrounded,
                 Scorers.AnswerKeywordsHit(answer.Answer, question.AnswerKeywords),
-                zScore,
-                zScore >= profile.SupportZThreshold,
+                roundedZScore,
+                roundedZScore >= profile.SupportZThreshold,
                 retrieved.Sum(chunk => chunk.Text.Length)));
         }
 
-        return Aggregate(strategy, allChunks.Count, chunkSizes, indexEmbedCalls, integrityFailures, outcomes, profile);
+        return Aggregate(strategy, allChunks.Count, chunkSizes, indexEmbedCalls, integrityFailures, citationCount, outcomes, profile);
+    }
+
+    /// <summary>
+    /// Machine-stable identifier for a retrieved chunk: the source file and the chunk's index within
+    /// it. See <see cref="QuestionOutcome"/> for why the chunk id itself cannot be published.
+    /// </summary>
+    private static string ChunkReference(TextChunk chunk)
+    {
+        return string.Create(CultureInfo.InvariantCulture, $"{chunk.Metadata.FileName}#{chunk.Index}");
     }
 
     /// <summary>Re-orders hydrated chunks to match citation order, which is descending by score.</summary>
@@ -126,11 +140,26 @@ internal static class EvalRunner
         var chunks = await documentStore
             .GetChunksAsync([.. citations.Select(citation => citation.ChunkId)], cancellationToken)
             .ConfigureAwait(false);
-        var byId = chunks.ToDictionary(chunk => chunk.Id, StringComparer.Ordinal);
 
-        return [.. citations
-            .Where(citation => byId.ContainsKey(citation.ChunkId))
-            .Select(citation => byId[citation.ChunkId])];
+        // Built with TryAdd rather than ToDictionary: the store returns one entry per requested id,
+        // so a citation list that names the same chunk twice would throw on a duplicate key and
+        // abort the whole run instead of scoring the question.
+        var byId = new Dictionary<string, TextChunk>(chunks.Count, StringComparer.Ordinal);
+        foreach (var chunk in chunks)
+        {
+            byId.TryAdd(chunk.Id, chunk);
+        }
+
+        var hydrated = new List<TextChunk>(citations.Count);
+        foreach (var citation in citations)
+        {
+            if (byId.TryGetValue(citation.ChunkId, out var chunk))
+            {
+                hydrated.Add(chunk);
+            }
+        }
+
+        return hydrated;
     }
 
     /// <summary>
@@ -140,14 +169,18 @@ internal static class EvalRunner
     /// </summary>
     private static int CountIntegrityFailures(IReadOnlyList<SourceCitation> citations, IReadOnlyList<TextChunk> retrieved)
     {
-        if (citations.Count != retrieved.Count)
-        {
-            return Math.Abs(citations.Count - retrieved.Count);
-        }
-
         var failures = 0;
         for (var index = 0; index < citations.Count; index++)
         {
+            // A citation that did not hydrate is dropped from `retrieved`, so it either runs off the
+            // end or shifts the ones after it. Both are counted here, one failure per citation,
+            // which is what keeps the metric bounded by the number of citations issued.
+            if (index >= retrieved.Count)
+            {
+                failures++;
+                continue;
+            }
+
             var citation = citations[index];
             var chunk = retrieved[index];
             if (!string.Equals(citation.ChunkId, chunk.Id, StringComparison.Ordinal) ||
@@ -188,6 +221,7 @@ internal static class EvalRunner
         IReadOnlyList<int> chunkSizes,
         int indexEmbedCalls,
         int integrityFailures,
+        int citationCount,
         IReadOnlyList<QuestionOutcome> outcomes,
         RunProfile profile)
     {
@@ -200,15 +234,12 @@ internal static class EvalRunner
             return array.Length == 0 ? 0 : array.Average();
         }
 
-        static double Round(double value) => Math.Round(value, 4);
-
         IReadOnlyDictionary<string, double> ByDifficulty(Func<QuestionOutcome, double> selector) =>
             answerable
                 .GroupBy(outcome => outcome.Difficulty.ToString().ToLowerInvariant())
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => Round(group.Average(selector)), StringComparer.Ordinal);
+                .ToDictionary(group => group.Key, group => Scorers.Round(group.Average(selector)), StringComparer.Ordinal);
 
-        var totalCitations = outcomes.Sum(outcome => outcome.RetrievedChunkIds.Count);
         var averageContextChars = Mean(outcomes.Select(outcome => (double)outcome.ContextChars));
         var abstentionCorrect = unanswerable.Count(outcome => !outcome.Supported)
             + answerable.Count(outcome => outcome.Supported);
@@ -219,22 +250,24 @@ internal static class EvalRunner
             Math.Round(chunkSizes.Count == 0 ? 0 : chunkSizes.Average(), 1),
             Scorers.Percentile(chunkSizes, 95),
             indexEmbedCalls,
-            Round(Mean(answerable.Select(outcome => outcome.RecallAt1))),
-            Round(Mean(answerable.Select(outcome => outcome.RecallAt3))),
-            Round(Mean(answerable.Select(outcome => outcome.RecallAt5))),
-            Round(Mean(answerable.Select(outcome => outcome.FullyCovered ? 1.0 : 0))),
-            Round(Mean(answerable.Select(outcome => outcome.ReciprocalRank))),
-            Round(Mean(answerable.Select(outcome => outcome.TopCitationCorrect ? 1.0 : 0))),
-            Round(Mean(answerable.Select(outcome => outcome.CitationPrecision))),
-            totalCitations == 0 ? 1 : Round(1 - ((double)integrityFailures / totalCitations)),
-            Round(Mean(outcomes.Select(outcome => outcome.Groundedness))),
-            Round(Mean(answerable.Select(outcome => outcome.AnswerKeywordsHit ? 1.0 : 0))),
-            Round(outcomes.Count == 0 ? 0 : (double)abstentionCorrect / outcomes.Count),
-            Round(unanswerable.Length == 0 ? 0 : (double)unanswerable.Count(outcome => outcome.Supported) / unanswerable.Length),
-            Round(answerable.Length == 0 ? 0 : (double)answerable.Count(outcome => !outcome.Supported) / answerable.Length),
-            Round(Mean(answerable.Select(outcome => outcome.SupportZScore))),
-            Round(Mean(unanswerable.Select(outcome => outcome.SupportZScore))),
-            Round(Mean(answerable.Select(outcome => outcome.FragmentationRate))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.RecallAt1))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.RecallAt3))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.RecallAt5))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.FullyCovered ? 1.0 : 0))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.ReciprocalRank))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.TopCitationCorrect ? 1.0 : 0))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.CitationPrecision))),
+            // Denominator is the number of citations issued, not the number that hydrated: dividing
+            // by the hydrated count would score a run where nothing hydrated as a perfect 1.000.
+            citationCount == 0 ? 1 : Scorers.Round(1 - ((double)integrityFailures / citationCount)),
+            Scorers.Round(Mean(outcomes.Select(outcome => outcome.Groundedness))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.AnswerKeywordsHit ? 1.0 : 0))),
+            Scorers.Round(outcomes.Count == 0 ? 0 : (double)abstentionCorrect / outcomes.Count),
+            Scorers.Round(unanswerable.Length == 0 ? 0 : (double)unanswerable.Count(outcome => outcome.Supported) / unanswerable.Length),
+            Scorers.Round(answerable.Length == 0 ? 0 : (double)answerable.Count(outcome => !outcome.Supported) / answerable.Length),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.SupportZScore))),
+            Scorers.Round(Mean(unanswerable.Select(outcome => outcome.SupportZScore))),
+            Scorers.Round(Mean(answerable.Select(outcome => outcome.FragmentationRate))),
             Math.Round(averageContextChars, 1),
             Scorers.EstimateTokens((int)Math.Round(averageContextChars)),
             ByDifficulty(outcome => outcome.RecallAt5),

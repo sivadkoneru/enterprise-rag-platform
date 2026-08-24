@@ -17,9 +17,11 @@ public sealed class DatasetIntegrityTests
 {
     private static async Task<IReadOnlyList<ResolvedQuestion>> ResolveAsync()
     {
+        // Resolved against every ingested document, not the handbook alone: the distractors are
+        // retrievable, so a term that appears in one of them is not absent and a gold phrase
+        // duplicated into one of them is not unambiguous.
         var dataset = GoldenDatasetLoader.Load();
-        var corpus = await EvalApplication.ParseAsync(RepoPaths.HandbookPdf);
-        return GoldenDatasetLoader.Resolve(dataset, new AnchorResolver(corpus));
+        return GoldenDatasetLoader.Resolve(dataset, await EvalApplication.BuildCorpusIndexAsync());
     }
 
     [Fact]

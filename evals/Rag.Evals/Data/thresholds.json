@@ -9,29 +9,25 @@
       "recall5": 0.688,
       "mrr5": 0.627,
       "citationAccuracy1": 0.545,
-      "fullCoverage5": 0.617,
-      "minChunks": 5
+      "fullCoverage5": 0.617
     },
     "recursive": {
       "recall5": 0.724,
       "mrr5": 0.593,
       "citationAccuracy1": 0.474,
-      "fullCoverage5": 0.664,
-      "minChunks": 5
+      "fullCoverage5": 0.664
     },
     "markdown-aware": {
       "recall5": 0.724,
       "mrr5": 0.601,
       "citationAccuracy1": 0.474,
-      "fullCoverage5": 0.664,
-      "minChunks": 5
+      "fullCoverage5": 0.664
     },
     "semantic": {
       "recall5": 0.569,
       "mrr5": 0.496,
       "citationAccuracy1": 0.426,
-      "fullCoverage5": 0.545,
-      "minChunks": 5
+      "fullCoverage5": 0.545
     }
   }
 }

@@ -71,9 +71,9 @@ jobs:
       # Regression floors are enforced by Rag.Evals.Tests in the step above. These steps cover the
       # other two failure modes: the harness itself breaking, and the published tables drifting away
       # from the numbers the code actually produces.
+      # The harness builds its configuration from an explicit dictionary and reads no environment
+      # variables, so the provider is pinned to deterministic in RunProfile.Default, not here.
       - name: Regenerate published evaluation tables
-        env:
-          LLM_PROVIDER: deterministic
         run: >-
           dotnet run --project evals/Rag.Evals/Rag.Evals.csproj
           --configuration Release

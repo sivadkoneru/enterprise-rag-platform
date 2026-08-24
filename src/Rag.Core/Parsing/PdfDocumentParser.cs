@@ -49,7 +49,7 @@ public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocu
         return new ParsedDocument(metadata.DocumentId, TextNormalizer.Normalize(extracted), metadata);
     }
 
-    private static string ExtractWithPdfPig(string path, out Exception? failure)
+    private string ExtractWithPdfPig(string path, out Exception? failure)
     {
         failure = null;
         try
@@ -61,7 +61,20 @@ public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocu
                 var text = ContentOrderTextExtractor.GetText(page, TextExtractionOptions);
                 if (string.IsNullOrWhiteSpace(text))
                 {
-                    continue;
+                    // Layout analysis returns nothing for a page whose glyphs it cannot order
+                    // (rotated text, unusual positioning). Page.Text has no separators at all, so
+                    // it is a poor substitute — but dropping the page silently loses its content
+                    // from an ingest that otherwise looks clean, so fall back and say so.
+                    text = page.Text;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    logger.LogWarning(
+                        "Layout analysis produced no text for page {PageNumber} of '{Path}'; falling back to unseparated page text, which has no line or paragraph breaks.",
+                        page.Number,
+                        path);
                 }
 
                 if (builder.Length > 0)

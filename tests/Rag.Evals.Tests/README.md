@@ -2,12 +2,15 @@
 
 Tests for the evaluation harness in `evals/`.
 
-Four concerns, in increasing order of scope:
+Five concerns, in increasing order of scope:
 
 - `AnchorResolverTests` — offset mapping, whitespace collapsing, and the two failure modes that must
   be loud: a phrase that no longer resolves, and one that resolves more than once.
 - `ScorerTests` — each metric against hand-built inputs, including the boundary-split case that only
   `unionCovers` rescues.
+- `HandbookCorpusTests` — the committed `samples/handbook.pdf` still matches `HandbookContent`, and
+  the generator still emits paragraph breaks. The binary is committed but the generator is only
+  reachable through a CLI command CI does not run, so nothing else would notice them drifting apart.
 - `DatasetIntegrityTests` — the golden dataset still describes the corpus: anchors resolve, declared
   difficulty matches measured overlap, unanswerable questions stay unanswerable.
 - `ChunkingBenchmarkTests` and `EvalRegressionTests` — the published benchmark is meaningful (no
