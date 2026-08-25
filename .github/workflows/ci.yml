@@ -68,6 +68,29 @@ jobs:
           path: ./test-results/**/*.trx
           if-no-files-found: ignore
 
+      # Regression floors are enforced by Rag.Evals.Tests in the step above. These steps cover the
+      # other two failure modes: the harness itself breaking, and the published tables drifting away
+      # from the numbers the code actually produces.
+      # The harness builds its configuration from an explicit dictionary and reads no environment
+      # variables, so the provider is pinned to deterministic in RunProfile.Default, not here.
+      - name: Regenerate published evaluation tables
+        run: >-
+          dotnet run --project evals/Rag.Evals/Rag.Evals.csproj
+          --configuration Release
+          --no-build
+          -- report --write
+
+      - name: Fail if published evaluation tables are stale
+        run: git diff --exit-code -- README.md evals/results
+
+      - name: Upload evaluation results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results/**
+          if-no-files-found: ignore
+
   release:
     name: Build packages & release
     # Runs only after build & test succeed, and only for version tag pushes

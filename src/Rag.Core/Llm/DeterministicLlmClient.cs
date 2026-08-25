@@ -9,6 +9,13 @@ namespace Rag.Core.Llm;
 
 public sealed class DeterministicLlmClient(IOptions<LlmOptions> options) : IEmbeddingClient, IChatClient
 {
+    /// <summary>
+    /// Fixed preamble on every grounded answer. Exposed because the evaluation harness strips it
+    /// before scoring groundedness; a copy of the literal there would silently stop matching the
+    /// moment the wording changed here, leaving the metric pinned high for the wrong reason.
+    /// </summary>
+    public const string AnswerPrefix = "Based on the retrieved context,";
+
     public Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -30,7 +37,7 @@ public sealed class DeterministicLlmClient(IOptions<LlmOptions> options) : IEmbe
         cancellationToken.ThrowIfCancellationRequested();
         var context = messages.LastOrDefault(message => message.Role == "user")?.Content ?? string.Empty;
         var answer = HasContext(context)
-            ? $"Based on the retrieved context, {FirstContextSentence(context)}"
+            ? $"{AnswerPrefix} {FirstContextSentence(context)}"
             : "I don't know based on the supplied context.";
         return Task.FromResult(answer);
     }

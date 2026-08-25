@@ -34,8 +34,12 @@ public static class RagServiceCollectionExtensions
             configuration.GetSection("Chunking").Bind(options);
             options.Size = Int(configuration["CHUNK_SIZE"], options.Size);
             options.Overlap = Int(configuration["CHUNK_OVERLAP"], options.Overlap);
+
+            // Only the distance-named variable is honoured. An alias named "...SIMILARITY_THRESHOLD"
+            // used to bind here too, which meant a value chosen as a similarity (0.78) was applied
+            // as a distance and inverted the cut policy for every host that set it.
             options.SemanticDistanceThreshold = Double(
-                configuration["SEMANTIC_DISTANCE_THRESHOLD"] ?? configuration["SEMANTIC_CHUNKING_SIMILARITY_THRESHOLD"],
+                configuration["SEMANTIC_DISTANCE_THRESHOLD"],
                 options.SemanticDistanceThreshold);
         });
         services.Configure<LlmOptions>(options => BindLlmOptions(options, configuration));

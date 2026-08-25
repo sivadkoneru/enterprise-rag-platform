@@ -3,11 +3,24 @@ using Microsoft.Extensions.Logging;
 using Rag.Core.Abstractions;
 using Rag.Core.Models;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace Rag.Core.Parsing;
 
 public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocumentParser
 {
+    /// <summary>
+    /// Reconstructs line and paragraph breaks from letter geometry. <c>Page.Text</c> concatenates
+    /// every letter with no separators at all, so it jams words together across line breaks
+    /// ("thirty days.Section 4") and yields a document with no blank lines. Chunking strategies that
+    /// split on paragraphs would then see one giant paragraph and emit a single chunk per document.
+    /// </summary>
+    private static readonly ContentOrderTextExtractor.Options TextExtractionOptions = new()
+    {
+        SeparateParagraphsWithDoubleNewline = true,
+        ReplaceWhitespaceWithSpace = true
+    };
+
     public string Name => "pdf";
 
     public bool CanParse(string path, string? contentType = null)
@@ -36,7 +49,7 @@ public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocu
         return new ParsedDocument(metadata.DocumentId, TextNormalizer.Normalize(extracted), metadata);
     }
 
-    private static string ExtractWithPdfPig(string path, out Exception? failure)
+    private string ExtractWithPdfPig(string path, out Exception? failure)
     {
         failure = null;
         try
@@ -45,7 +58,33 @@ public sealed class PdfDocumentParser(ILogger<PdfDocumentParser> logger) : IDocu
             var builder = new StringBuilder();
             foreach (var page in document.GetPages())
             {
-                builder.AppendLine(page.Text);
+                var text = ContentOrderTextExtractor.GetText(page, TextExtractionOptions);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    // Layout analysis returns nothing for a page whose glyphs it cannot order
+                    // (rotated text, unusual positioning). Page.Text has no separators at all, so
+                    // it is a poor substitute — but dropping the page silently loses its content
+                    // from an ingest that otherwise looks clean, so fall back and say so.
+                    text = page.Text;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    logger.LogWarning(
+                        "Layout analysis produced no text for page {PageNumber} of '{Path}'; falling back to unseparated page text, which has no line or paragraph breaks.",
+                        page.Number,
+                        path);
+                }
+
+                if (builder.Length > 0)
+                {
+                    // A page break is a paragraph break: the extractor's paragraph heuristic
+                    // compares baseline gaps within a single page and cannot see across one.
+                    builder.Append("\n\n");
+                }
+
+                builder.Append(text.Trim());
             }
 
             return builder.ToString();
