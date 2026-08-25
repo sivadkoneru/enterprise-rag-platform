@@ -4949,7 +4949,7 @@
       "answerableMeanZ": 3.6248,
       "unanswerableMeanZ": 3.5767,
       "fragmentedAnchorRate": 0,
-      "averageContextChars": 848.3,
+      "averageContextChars": 848,
       "averageContextTokens": 212,
       "recallByDifficulty": {
         "easy": 0.9375,
@@ -5995,7 +5995,7 @@
             "handbook.pdf#26",
             "handbook.pdf#4",
             "handbook.pdf#84",
-            "handbook.pdf#131"
+            "handbook.pdf#69"
           ],
           "anchorCount": 2,
           "anchorsFoundAt1": 0,
@@ -6010,7 +6010,7 @@
           "answerKeywordsHit": false,
           "supportZScore": 3.4927,
           "supported": true,
-          "contextChars": 948,
+          "contextChars": 930,
           "fullyCovered": false,
           "recallAt1": 0,
           "recallAt3": 0,

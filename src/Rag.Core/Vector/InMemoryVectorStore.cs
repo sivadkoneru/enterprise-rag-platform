@@ -40,6 +40,7 @@ public sealed class InMemoryVectorStore : IVectorStore
                 return new VectorSearchResult(record.ChunkId, record.DocumentId, VectorMath.CosineSimilarity(queryVector, record.Vector));
             })
             .OrderByDescending(result => result.Score)
+            .ThenBy(result => result.ChunkId, StringComparer.Ordinal)
             .Take(Math.Max(1, topK))
             .ToArray();
         return Task.FromResult<IReadOnlyList<VectorSearchResult>>(results);
