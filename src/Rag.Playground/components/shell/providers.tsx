@@ -1,5 +1,6 @@
 "use client";
 import { ThemeProvider } from "next-themes";
+import { EnvironmentProvider } from "./environment";
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <ThemeProvider
@@ -8,7 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             enableSystem
             disableTransitionOnChange
         >
-            {children}
+            <EnvironmentProvider>{children}</EnvironmentProvider>
         </ThemeProvider>
     );
 }

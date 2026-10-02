@@ -2,10 +2,11 @@ import { Cpu, Network } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageFooter, PageHeading, Panel } from "@/components/shared/panel";
 import { ArchitectureCanvas } from "@/features/architecture/architecture-canvas";
+import { EnvironmentView } from "@/features/live/environment-view";
 
 export default function ArchitecturePage() {
     return (
-        <div>
+        <EnvironmentView page="architecture"><div>
             <PageHeading
                 eyebrow="Platform map"
                 title="Architecture"
@@ -40,6 +41,6 @@ export default function ArchitecturePage() {
             </Panel>
             <ArchitectureCanvas />
             <PageFooter />
-        </div>
+        </div></EnvironmentView>
     );
 }

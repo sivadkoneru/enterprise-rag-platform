@@ -28,12 +28,18 @@ const colors = [
 export function PipelineTrace({
     stages,
     running = false,
+    simulated = true,
+    totalLatencyMs,
 }: {
     stages: TraceStage[];
     running?: boolean;
+    simulated?: boolean;
+    totalLatencyMs?: number;
 }) {
     const [expanded, setExpanded] = useState<string | null>(null);
-    const total = stages.reduce((sum, stage) => sum + stage.durationMs, 0);
+    const stageTotal = stages.reduce((sum, stage) => sum + stage.durationMs, 0);
+    const total = totalLatencyMs ?? stageTotal;
+    const overhead = Math.max(0, total - stageTotal);
     const complete =
         stages.length > 0 &&
         stages.every(
@@ -51,7 +57,7 @@ export function PipelineTrace({
                         ? "Executing"
                         : complete
                           ? "Complete"
-                          : "Awaiting query"}
+                                        : stages.some(stage => stage.status === "failed") ? "Failed" : stages.some(stage => stage.status === "canceled") ? "Canceled" : "Awaiting query"}
                 </Badge>
             }
         >
@@ -62,7 +68,7 @@ export function PipelineTrace({
                 <span className="mono text-[11px]">
                     {complete ? `${total} ms` : "—"}
                     <span className="ml-1.5 font-sans text-[10px] text-muted-foreground">
-                        simulated
+                        {simulated ? "simulated" : "measured stages"}
                     </span>
                 </span>
             </div>
@@ -135,7 +141,7 @@ export function PipelineTrace({
                                                 ? "Running"
                                                 : stage.status === "failed"
                                                   ? "Failed"
-                                                  : "Queued"}
+                                                  : stage.status === "canceled" ? "Canceled" : "Queued"}
                                     </span>
                                     <span
                                         className="mt-1.5 block truncate text-[9px] text-muted-foreground"
@@ -185,7 +191,7 @@ export function PipelineTrace({
                             <div
                                 className="flex h-2.5 overflow-hidden rounded-sm"
                                 role="img"
-                                aria-label={`Simulated latency, ${total} milliseconds. Stage values are shown above.`}
+                                aria-label={`${simulated ? "Simulated" : "Measured"} latency, ${total} milliseconds. Stage values are shown above.`}
                             >
                                 {stages
                                     .filter((stage) => stage.durationMs > 0)
@@ -202,8 +208,10 @@ export function PipelineTrace({
                                             }}
                                         />
                                     ))}
+                                {overhead > 0 && <div title={`Orchestration and rounding: ${overhead} ms`} style={{ width: `${overhead / Math.max(1, total) * 100}%`, background: "#a0a4b7" }} />}
                             </div>
                             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">
+                                {overhead > 0 && <span className="text-[9px] text-muted-foreground">Orchestration / rounding: {overhead} ms</span>}
                                 {stages
                                     .filter((stage) => stage.durationMs > 0)
                                     .map((stage) => (

@@ -18,6 +18,7 @@ import {
     Moon,
     Network,
     Search,
+    Settings2,
     Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AboutDrawer } from "@/features/about/about-drawer";
+import { useEnvironment } from "./environment";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -37,10 +39,12 @@ const navigation = [
     { href: "/retrieval", label: "Retrieval", icon: Search },
     { href: "/evaluation", label: "Evaluation", icon: Activity },
     { href: "/architecture", label: "Architecture", icon: Network },
+    { href: "/integrations", label: "Integrations & Setup", icon: Settings2 },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+    const { mode, setMode } = useEnvironment();
     const { resolvedTheme, setTheme } = useTheme();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [aboutOpen, setAboutOpen] = useState(false);
@@ -66,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Lab
                 </span>
                 <span className="ml-auto rounded border px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                    DEMO
+                    {mode === "demo" ? "DEMO" : "CLIENT"}
                 </span>
             </Link>
             <div className="px-4 py-6">
@@ -79,7 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             Engineering workspace
                         </div>
                         <div className="mt-0.5 text-[10px] text-muted-foreground">
-                            Local demo environment
+                            {mode === "demo" ? "Local demo environment" : "Client environment"}
                         </div>
                     </div>
                 </div>
@@ -151,7 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <div className="mt-5 flex items-center justify-between border-t px-2 pt-4 text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-2">
                         <span className="status-dot" />
-                        Demo Mode
+                        {mode === "demo" ? "Demo Mode" : "Client Environment"}
                     </span>
                     <span className="mono">v1.0</span>
                 </div>
@@ -198,21 +202,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                     <div className="flex shrink-0 items-center gap-4">
                         <div className="hidden items-center gap-4 text-[10px] text-muted-foreground xl:flex">
-                            {[
+                            {(mode === "demo" ? [
                                 "Demo Corpus",
                                 "Elasticsearch",
                                 "Embeddings Ready",
-                            ].map((label) => (
+                            ] : ["Client data", "Live API"]).map((label) => (
                                 <Tooltip key={label}>
                                     <TooltipTrigger asChild>
                                         <button className="flex items-center gap-1.5">
-                                            <span className="status-dot" />
+                                            <span className={mode === "demo" ? "status-dot" : "h-1.5 w-1.5 rounded-full bg-muted-foreground"} />
                                             {label}
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        Simulated status. This demo uses local
-                                        fixtures.
+                                        {mode === "demo" ? "Simulated status. This demo uses local fixtures." : "Connection status is available in Integrations & Setup."}
                                     </TooltipContent>
                                 </Tooltip>
                             ))}
@@ -222,8 +225,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             className="hidden gap-1.5 rounded-md bg-muted/50 text-[10px] font-normal sm:flex"
                         >
                             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            API: Demo Mode
+                            {mode === "demo" ? "API: Demo Mode" : "API: Client Environment"}
                         </Badge>
+                        <select aria-label="Environment mode" className="field !w-auto !max-w-[150px] !py-1.5 !text-[10px]" value={mode} onChange={e => setMode(e.target.value === "client" ? "client" : "demo")}>
+                            <option value="demo">Demo</option>
+                            <option value="client">Client Environment</option>
+                        </select>
                         <div className="h-5 border-l" />
                         <Button
                             variant="ghost"

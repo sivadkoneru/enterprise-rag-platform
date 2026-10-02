@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, FileText, Search } from "lucide-react";
-import type { CorpusDocument, CorpusId } from "@/lib/contracts";
-import { corpora, documents } from "@/lib/demo/corpus";
+import type { Corpus, CorpusDocument, CorpusId } from "@/lib/contracts";
+import { gateway } from "@/lib/demo/gateway";
 import { Drawer } from "@/components/shared/drawer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,20 +41,28 @@ export function DocumentDrawer({
     documentId: string | null;
     onClose: () => void;
 }) {
-    const document = documents.find((doc) => doc.id === documentId);
+    const [document, setDocument] = useState<CorpusDocument | null>(null);
+    const [error, setError] = useState("");
+    useEffect(() => {
+        if (!documentId) return;
+        let active = true;
+        gateway.getDocument(documentId).then(doc => { if (active) { setDocument(doc); setError(""); } }).catch(() => { if (active) setError("Document unavailable."); });
+        return () => { active = false; };
+    }, [documentId]);
+    const currentDocument = document?.id === documentId ? document : null;
     return (
         <Drawer
             open={documentId !== null}
             onOpenChange={(open) => {
                 if (!open) onClose();
             }}
-            title={document?.filename ?? "Document"}
+            title={currentDocument?.filename ?? "Document"}
             description="Full source text from the synthetic demo corpus."
         >
-            {document ? (
-                <DocumentContent document={document} />
+            {currentDocument ? (
+                <DocumentContent document={currentDocument} />
             ) : (
-                <p className="py-8">Document unavailable.</p>
+                <p className="py-8">{error || "Loading document…"}</p>
             )}
         </Drawer>
     );
@@ -70,7 +78,15 @@ export function CorpusDrawer({
 }) {
     const [search, setSearch] = useState("");
     const [selected, setSelected] = useState<CorpusDocument | null>(null);
-    const corpus = corpora.find((item) => item.id === corpusId)!;
+    const [corpus, setCorpus] = useState<Corpus | null>(null);
+    const [documents, setDocuments] = useState<CorpusDocument[]>([]);
+    const [error, setError] = useState("");
+    useEffect(() => {
+        if (!open) return;
+        let active = true;
+        Promise.all([gateway.listCorpora(), gateway.listDocuments(corpusId)]).then(([corpora, docs]) => { if (active) { setCorpus(corpora.find(item => item.id === corpusId) ?? null); setDocuments(docs); setError(""); } }).catch(() => { if (active) setError("Corpus could not be loaded."); });
+        return () => { active = false; };
+    }, [corpusId, open]);
     const filtered = documents.filter(
         (doc) =>
             doc.corpusId === corpusId &&
@@ -85,11 +101,11 @@ export function CorpusDrawer({
                 onOpenChange(value);
                 if (!value) setSelected(null);
             }}
-            title={selected?.filename ?? corpus.name}
+            title={selected?.filename ?? corpus?.name ?? "Document corpus"}
             description={
                 selected
                     ? "Full source text · Synthetic demo document"
-                    : `${corpus.documentCount} documents · ${corpus.chunkCount.toLocaleString()} chunks · Local fixture index`
+                    : `${corpus?.documentCount ?? "—"} documents · ${corpus?.chunkCount.toLocaleString() ?? "—"} chunks · Local fixture index`
             }
         >
             {selected ? (
@@ -107,6 +123,7 @@ export function CorpusDrawer({
                 </>
             ) : (
                 <div className="pt-5">
+                    {error && <p role="alert" className="mb-3 text-destructive">{error}</p>}
                     <label className="relative block">
                         <Search
                             size={15}

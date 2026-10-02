@@ -1,9 +1,9 @@
 export type ChunkingStrategy =
     "fixed" | "recursive" | "markdown-aware" | "semantic";
-export type CorpusId = "handbook" | "product" | "support";
-export type DataOrigin = "published-benchmark" | "demo-fixture";
+export type CorpusId = string;
+export type DataOrigin = "published-benchmark" | "demo-fixture" | "client-environment";
 export type StageStatus =
-    "queued" | "running" | "complete" | "skipped" | "failed";
+    "queued" | "running" | "complete" | "skipped" | "failed" | "canceled";
 
 export interface Corpus {
     id: CorpusId;
