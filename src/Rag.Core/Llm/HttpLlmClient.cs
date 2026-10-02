@@ -13,7 +13,7 @@ namespace Rag.Core.Llm;
 public sealed class HttpLlmClient(
     IHttpClientFactory httpClientFactory,
     IOptions<LlmOptions> options,
-    ILogger<HttpLlmClient> logger) : IEmbeddingClient, IChatClient
+    ILogger<HttpLlmClient> logger) : IEmbeddingClient, IChatUsageClient
 {
     public async Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
     {
@@ -49,6 +49,11 @@ public sealed class HttpLlmClient(
 
     public async Task<string> CompleteAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default)
     {
+        return (await CompleteDetailedAsync(messages, cancellationToken).ConfigureAwait(false)).Text;
+    }
+
+    public async Task<ChatCompletionResult> CompleteDetailedAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default)
+    {
         var config = options.Value;
         if (string.IsNullOrWhiteSpace(config.ChatEndpoint))
         {
@@ -77,7 +82,11 @@ public sealed class HttpLlmClient(
             throw new InvalidOperationException("The chat endpoint returned a response without a 'choices[0].message.content' value.");
         }
 
-        return content.GetString() ?? string.Empty;
+        int? Usage(string key)
+        {
+            return document.RootElement.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty(key, out var number) && number.TryGetInt32(out var count) && count >= 0 ? count : null;
+        }
+        return new ChatCompletionResult(content.GetString() ?? string.Empty, Usage("prompt_tokens"), Usage("completion_tokens"), Usage("total_tokens"));
     }
 
     // Timeouts, retries, and backoff come from the "rag-llm" resilience handler configured in

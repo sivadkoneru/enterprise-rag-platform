@@ -35,3 +35,12 @@ that names this package and `AddRagCosmos`, instead of silently falling back to 
 ## Dependencies
 
 `Microsoft.Azure.Cosmos`, `Newtonsoft.Json`, and `Rag.Core` for the `IDocumentStore` contract it implements.
+
+
+## Live workbench persistence
+
+`AddRagCosmos` also registers the keyed `IWorkbenchStateStore` adapter selected by
+`AddRagWorkbench` when `DOC_STORE=cosmos`. It persists corpus/profile/document/result JSON in the
+configured database's `workbench` container, partitioned by record kind. Original document/chunk
+containers remain unchanged. Job persistence remains selected independently through `JOB_STORE`.
+The Cosmos SDK stays entirely in this provider project.

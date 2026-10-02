@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.Core.Abstractions;
 using Rag.Core.Jobs;
 using Rag.Core.Stores;
+using Rag.Core.Workbench;
+using Rag.Providers.Mongo.Stores;
 
 namespace Rag.Providers.Mongo;
 
@@ -18,6 +20,8 @@ public static class MongoServiceCollectionExtensions
     public static IServiceCollection AddRagMongo(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddKeyedSingleton<IDocumentStore, MongoDocumentStore>("mongo");
+        services.AddKeyedSingleton<IWorkbenchStateStore, MongoWorkbenchStateStore>("mongo");
+        services.AddKeyedSingleton<IWorkbenchJobStateStore, MongoWorkbenchJobStateStore>("mongo");
         services.AddKeyedSingleton<IIngestionJobStore, MongoIngestionJobStore>("mongo");
 
         return services;

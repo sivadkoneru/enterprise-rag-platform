@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
+using Rag.Core.Workbench;
 using Rag.Providers.Aws;
 using Rag.Providers.AzureBlob;
 using Xunit;
@@ -87,6 +88,7 @@ public sealed class EnvExampleBindingTests
         // here for the S3_*/AZURE_BLOB_* keys documented in .env.example to bind at all.
         using var services = new ServiceCollection()
             .AddRagPlatform(configuration)
+            .AddRagWorkbench(configuration)
             .AddRagAwsS3(configuration)
             .AddRagAzureBlob(configuration)
             .BuildServiceProvider();
@@ -94,6 +96,8 @@ public sealed class EnvExampleBindingTests
         return JsonSerializer.Serialize(new
         {
             Rag = services.GetRequiredService<IOptions<RagOptions>>().Value,
+            Query = services.GetRequiredService<IOptions<WorkbenchQueryOptions>>().Value,
+            Reranker = services.GetRequiredService<IOptions<RerankerOptions>>().Value,
             Chunking = services.GetRequiredService<IOptions<ChunkingOptions>>().Value,
             Llm = services.GetRequiredService<IOptions<LlmOptions>>().Value,
             Ingestion = services.GetRequiredService<IOptions<IngestionOptions>>().Value,

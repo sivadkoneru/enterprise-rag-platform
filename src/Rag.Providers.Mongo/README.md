@@ -38,3 +38,13 @@ back to the in-memory store.
 ## Dependencies
 
 `MongoDB.Driver`, and `Rag.Core` for the `IDocumentStore` / `IIngestionJobStore` contracts it implements.
+
+
+## Live workbench persistence
+
+`AddRagMongo` also registers keyed `IWorkbenchStateStore` and `IWorkbenchJobStateStore` adapters.
+`AddRagWorkbench` selects them through `DOC_STORE=mongo` and `JOB_STORE=mongo`, respectively.
+Corpus/profile/document/result records use the configured document database; live jobs use the
+configured job database and connection. Records live in dedicated `workbench_*` collections and
+store versioned JSON payloads, separate from the original ingestion-job schema. Recreating the
+adapter retains catalog, job, and evaluation state. No Mongo SDK dependency is added to `Rag.Core`.

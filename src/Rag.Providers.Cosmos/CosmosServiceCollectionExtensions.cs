@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.Core.Abstractions;
 using Rag.Core.Stores;
+using Rag.Core.Workbench;
+using Rag.Providers.Cosmos.Stores;
 
 namespace Rag.Providers.Cosmos;
 
@@ -17,6 +19,7 @@ public static class CosmosServiceCollectionExtensions
     public static IServiceCollection AddRagCosmos(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddKeyedSingleton<IDocumentStore, CosmosDocumentStore>("cosmos");
+        services.AddKeyedSingleton<IWorkbenchStateStore, CosmosWorkbenchStateStore>("cosmos");
 
         return services;
     }

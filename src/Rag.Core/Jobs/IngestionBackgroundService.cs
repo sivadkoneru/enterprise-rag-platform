@@ -16,7 +16,20 @@ public sealed class IngestionBackgroundService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverRestartableJobsAsync(stoppingToken).ConfigureAwait(false);
+        using var recoveryRetry = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await RecoverRestartableJobsAsync(stoppingToken).ConfigureAwait(false);
+                break;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning("Ingestion recovery could not contact the configured job store ({ErrorType}); retrying.", exception.GetType().Name);
+                await recoveryRetry.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false);
+            }
+        }
 
         await foreach (var job in queue.DequeueAllAsync(stoppingToken).ConfigureAwait(false))
         {

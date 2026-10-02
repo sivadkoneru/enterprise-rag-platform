@@ -9,13 +9,14 @@ using Rag.Core.Abstractions;
 using Rag.Core.Common;
 using Rag.Core.Configuration;
 using Rag.Core.Models;
+using Rag.Core.Workbench;
 
 namespace Rag.Core.Vector;
 
 public sealed class ElasticsearchVectorStore(
     IHttpClientFactory httpClientFactory,
     IOptions<VectorStoreOptions> options,
-    ILogger<ElasticsearchVectorStore> logger) : IVectorStore
+    ILogger<ElasticsearchVectorStore> logger) : IVectorStore, ILexicalSearchStore
 {
     public async Task EnsureIndexAsync(CancellationToken cancellationToken = default)
     {
@@ -34,6 +35,7 @@ public sealed class ElasticsearchVectorStore(
                 {
                     chunkId = new { type = "keyword" },
                     documentId = new { type = "keyword" },
+                    text = new { type = "text" },
                     metadata = new { type = "object", enabled = true },
                     vector = new { type = "dense_vector", dims = options.Value.Dimensions, index = true, similarity = "cosine" }
                 }
@@ -83,6 +85,7 @@ public sealed class ElasticsearchVectorStore(
                     record.ChunkId,
                     record.DocumentId,
                     record.Metadata,
+                    text = record.Metadata.GetValueOrDefault("text") ?? string.Empty,
                     vector = record.Vector
                 },
                 RagJson.Options)).Append('\n');
@@ -149,6 +152,22 @@ public sealed class ElasticsearchVectorStore(
         }
 
         return results;
+    }
+
+    public async Task<IReadOnlyList<VectorSearchResult>> SearchLexicalAsync(string question, int topK, VectorSearchFilter filter, CancellationToken cancellationToken = default)
+    {
+        var clauses = BuildFilter(filter) ?? [];
+        var payload = new
+        {
+            size = Math.Clamp(topK, 1, 400),
+            query = new { @bool = new { must = new[] { new { match = new { text = question } } }, filter = clauses } },
+            _source = new[] { "chunkId", "documentId" }
+        };
+        using var response = await Client().PostAsJsonAsync($"{IndexPath()}/_search", payload, RagJson.Options, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return document.RootElement.GetProperty("hits").GetProperty("hits").EnumerateArray().Select(hit => new VectorSearchResult(hit.GetProperty("_source").GetProperty("chunkId").GetString() ?? "", hit.GetProperty("_source").GetProperty("documentId").GetString() ?? "", hit.GetProperty("_score").GetDouble())).ToArray();
     }
 
     private static object BuildKnn(IReadOnlyList<float> queryVector, int topK, object[]? filter)
