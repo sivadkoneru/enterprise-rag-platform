@@ -10,4 +10,7 @@
     <ProjectReference Include="..\Rag.Providers.Cosmos\Rag.Providers.Cosmos.csproj" />
     <ProjectReference Include="..\Rag.Providers.Mongo\Rag.Providers.Mongo.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\Rag.Playground\lib\integrations\config-catalog.json" Link="configuration-catalog.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Rag.Api.Contracts;
+using Rag.Api.Workbench;
+using Rag.Core.Workbench;
 using Rag.Core.Abstractions;
 using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
@@ -54,6 +56,8 @@ builder.Services.AddRagCosmos(builder.Configuration);
 builder.Services.AddRagMongo(builder.Configuration);
 
 builder.Services.AddRagIngestionWorker();
+builder.Services.AddRagWorkbench(builder.Configuration);
+builder.Services.AddSingleton<WorkbenchEnvironment>();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<RagExceptionHandler>();
 
@@ -215,6 +219,8 @@ app.MapPost("/query", async Task<IResult> (ApiQueryRequest request, IQueryPipeli
 })
     .WithName("Query")
     .WithTags("Query");
+
+app.MapRagWorkbench();
 
 app.Run();
 

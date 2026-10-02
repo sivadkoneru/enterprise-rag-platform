@@ -1,0 +1,1130 @@
+{
+  "schemaVersion": 1,
+  "sourceOfTruth": "src/Rag.Playground/lib/integrations/config-catalog.json",
+  "groups": [
+    {
+      "id": "runtime",
+      "title": "Runtime & API",
+      "description": "ASP.NET Core host, API access, and source-scope controls.",
+      "fields": [
+        {
+          "id": "environment",
+          "key": "ASPNETCORE_ENVIRONMENT",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "ASPNETCORE_ENVIRONMENT"
+          ],
+          "type": "select",
+          "defaultValue": "Production",
+          "placeholder": "Development",
+          "secret": false,
+          "choices": [
+            "Development",
+            "Staging",
+            "Production"
+          ],
+          "help": "ASP.NET Core hosting environment.",
+          "appliesTo": "API and same-origin Playground proxy",
+          "changeEffect": "restart",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "api-urls",
+          "key": "ASPNETCORE_URLS",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "ASPNETCORE_URLS"
+          ],
+          "type": "url",
+          "defaultValue": "http://+:8080",
+          "placeholder": "http://+:8080",
+          "secret": false,
+          "help": "URLs bound by the API process inside its container.",
+          "appliesTo": "API and same-origin Playground proxy",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "api-key",
+          "key": "Api:ApiKey",
+          "section": "Api",
+          "option": "ApiKey",
+          "environmentAliases": [
+            "RAG_API_KEY"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Generate a unique random key",
+          "secret": true,
+          "help": "Optional API key sent in the X-API-Key header. Set the same value on the API and the server-side Playground proxy.",
+          "appliesTo": "API and same-origin Playground proxy",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "allowed-roots",
+          "key": "LocalSource:AllowedRoots",
+          "section": "LocalSource",
+          "option": "AllowedRoots",
+          "environmentAliases": [
+            "LOCAL_SOURCE_ALLOWED_ROOTS"
+          ],
+          "type": "multiline",
+          "defaultValue": "",
+          "placeholder": "/srv/rag/documents",
+          "secret": false,
+          "help": "Allowed local source roots. The environment alias uses the platform path separator; empty means unrestricted.",
+          "appliesTo": "API and same-origin Playground proxy",
+          "changeEffect": "restart",
+          "validation": "Enter one value per line; environment output joins values with the documented separator."
+        },
+        {
+          "id": "allowed-prefixes",
+          "key": "CloudSource:AllowedPrefixes",
+          "section": "CloudSource",
+          "option": "AllowedPrefixes",
+          "environmentAliases": [
+            "CLOUD_SOURCE_ALLOWED_PREFIXES"
+          ],
+          "type": "multiline",
+          "defaultValue": "",
+          "placeholder": "s3://company-docs/,azureblob://company-docs/",
+          "secret": false,
+          "help": "Allowed cloud-source URI prefixes. The environment alias is comma-separated; empty means unrestricted.",
+          "appliesTo": "API and same-origin Playground proxy",
+          "changeEffect": "restart",
+          "validation": "Enter one value per line; environment output joins values with the documented separator."
+        },
+        {
+          "id": "playground-port",
+          "key": "PLAYGROUND_PORT",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "PLAYGROUND_PORT"
+          ],
+          "type": "number",
+          "defaultValue": 3000,
+          "minimum": 1,
+          "maximum": 65535,
+          "placeholder": "3000",
+          "secret": false,
+          "help": "Host port published by the local Compose profile.",
+          "appliesTo": "Playground Docker Compose port mapping",
+          "changeEffect": "restart",
+          "validation": "Use an integer from 1 through 65535."
+        },
+        {
+          "id": "compose-profiles",
+          "key": "COMPOSE_PROFILES",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "COMPOSE_PROFILES"
+          ],
+          "type": "text",
+          "defaultValue": "local-storage",
+          "placeholder": "s3-emulator,azure-emulator",
+          "secret": false,
+          "help": "Optional Compose profiles: s3-emulator and azure-emulator.",
+          "appliesTo": "Optional local source emulators",
+          "changeEffect": "restart",
+          "validation": "Comma-separated Compose profile names."
+        },
+        {
+          "id": "client-documents-path",
+          "key": "CLIENT_DOCUMENTS_PATH",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "CLIENT_DOCUMENTS_PATH"
+          ],
+          "type": "text",
+          "defaultValue": "./client-documents",
+          "placeholder": "./client-documents",
+          "secret": false,
+          "help": "Host directory mounted read-only as /documents inside the API container.",
+          "appliesTo": "API local document source mount",
+          "changeEffect": "restart",
+          "validation": "Use a host path available to Docker Compose."
+        }
+      ]
+    },
+    {
+      "id": "models",
+      "title": "Models & providers",
+      "description": "Embedding, chat, and optional reranking clients. Secret values are never returned by the configuration status endpoint.",
+      "fields": [
+        {
+          "id": "llm-provider",
+          "key": "Llm:Provider",
+          "section": "Llm",
+          "option": "Provider",
+          "environmentAliases": [
+            "LLM_PROVIDER"
+          ],
+          "type": "select",
+          "defaultValue": "deterministic",
+          "placeholder": "deterministic",
+          "secret": false,
+          "choices": [
+            "deterministic",
+            "openai",
+            "azure-openai"
+          ],
+          "help": "Selects the separately configured embedding and chat clients.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "llm-api-key",
+          "key": "Llm:ApiKey",
+          "section": "Llm",
+          "option": "ApiKey",
+          "environmentAliases": [
+            "LLM_API_KEY"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Provider API key",
+          "secret": true,
+          "help": "Used by HTTP embedding and chat clients. Keep it server-side.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "embedding-endpoint",
+          "key": "Llm:EmbeddingEndpoint",
+          "section": "Llm",
+          "option": "EmbeddingEndpoint",
+          "environmentAliases": [
+            "LLM_EMBEDDING_ENDPOINT"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://api.openai.com/v1/embeddings",
+          "secret": false,
+          "help": "OpenAI-compatible embedding endpoint.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "embedding-model",
+          "key": "Llm:EmbeddingModel",
+          "section": "Llm",
+          "option": "EmbeddingModel",
+          "environmentAliases": [
+            "LLM_EMBEDDING_MODEL"
+          ],
+          "type": "text",
+          "defaultValue": "",
+          "placeholder": "text-embedding-3-small",
+          "secret": false,
+          "help": "Embedding model or deployment identifier.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "embedding-dimensions",
+          "key": "Llm:EmbeddingDimensions",
+          "section": "Llm",
+          "option": "EmbeddingDimensions",
+          "environmentAliases": [
+            "LLM_EMBEDDING_DIMENSIONS"
+          ],
+          "type": "number",
+          "defaultValue": 1536,
+          "placeholder": "1536",
+          "secret": false,
+          "help": "Must match the vector index dimensions.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "reindex",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "chat-endpoint",
+          "key": "Llm:ChatEndpoint",
+          "section": "Llm",
+          "option": "ChatEndpoint",
+          "environmentAliases": [
+            "LLM_CHAT_ENDPOINT"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://api.openai.com/v1/chat/completions",
+          "secret": false,
+          "help": "OpenAI-compatible chat completion endpoint.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "chat-model",
+          "key": "Llm:ChatModel",
+          "section": "Llm",
+          "option": "ChatModel",
+          "environmentAliases": [
+            "LLM_CHAT_MODEL"
+          ],
+          "type": "text",
+          "defaultValue": "",
+          "placeholder": "gpt-4.1-mini",
+          "secret": false,
+          "help": "Chat model or deployment identifier.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "system-prompt",
+          "key": "Llm:SystemPrompt",
+          "section": "Llm",
+          "option": "SystemPrompt",
+          "environmentAliases": [
+            "LLM_SYSTEM_PROMPT"
+          ],
+          "type": "textarea",
+          "defaultValue": "Answer only from the supplied context. If the answer is not present, say you don't know. Always cite sources when context is used.",
+          "placeholder": "Answer only from supplied context and cite sources.",
+          "secret": false,
+          "help": "Grounding instruction sent with every chat request.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "llm-timeout",
+          "key": "Llm:TimeoutSeconds",
+          "section": "Llm",
+          "option": "TimeoutSeconds",
+          "environmentAliases": [
+            "LLM_TIMEOUT_SECONDS",
+            "HTTP_TIMEOUT_SECONDS"
+          ],
+          "type": "number",
+          "defaultValue": 60,
+          "placeholder": "60",
+          "secret": false,
+          "help": "Per-attempt timeout in seconds; the legacy HTTP_TIMEOUT_SECONDS alias is also supported.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "llm-retries",
+          "key": "Llm:RetryCount",
+          "section": "Llm",
+          "option": "RetryCount",
+          "environmentAliases": [
+            "LLM_RETRY_COUNT",
+            "HTTP_RETRY_COUNT"
+          ],
+          "type": "number",
+          "defaultValue": 3,
+          "placeholder": "3",
+          "secret": false,
+          "help": "Retry attempts after a failed HTTP request.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "llm-retry-backoff",
+          "key": "Llm:RetryBackoffSeconds",
+          "section": "Llm",
+          "option": "RetryBackoffSeconds",
+          "environmentAliases": [
+            "LLM_RETRY_BACKOFF_SECONDS",
+            "HTTP_RETRY_BACKOFF_SECONDS"
+          ],
+          "type": "number",
+          "defaultValue": 2,
+          "placeholder": "2",
+          "secret": false,
+          "help": "Delay between retry attempts in seconds.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits.",
+          "minimum": 0,
+          "maximum": null
+        },
+        {
+          "id": "reranker-endpoint",
+          "key": "Reranker:Endpoint",
+          "section": "Reranker",
+          "option": "Endpoint",
+          "environmentAliases": [
+            "RERANKER_ENDPOINT"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://reranker.example/v1/rerank",
+          "secret": false,
+          "help": "Optional HTTP reranker endpoint. Leave empty to disable.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "reranker-api-key",
+          "key": "Reranker:ApiKey",
+          "section": "Reranker",
+          "option": "ApiKey",
+          "environmentAliases": [
+            "RERANKER_API_KEY"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Reranker API key",
+          "secret": true,
+          "help": "Optional reranker credential. Keep it server-side.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "reranker-model",
+          "key": "Reranker:Model",
+          "section": "Reranker",
+          "option": "Model",
+          "environmentAliases": [
+            "RERANKER_MODEL"
+          ],
+          "type": "text",
+          "defaultValue": "",
+          "placeholder": "reranker-model",
+          "secret": false,
+          "help": "Optional reranker model identifier.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "reranker-timeout",
+          "key": "Reranker:TimeoutSeconds",
+          "section": "Reranker",
+          "option": "TimeoutSeconds",
+          "environmentAliases": [
+            "RERANKER_TIMEOUT_SECONDS"
+          ],
+          "type": "number",
+          "defaultValue": 30,
+          "placeholder": "30",
+          "secret": false,
+          "help": "Reranker HTTP timeout in seconds.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        }
+      ]
+    },
+    {
+      "id": "retrieval",
+      "title": "Retrieval & chunking",
+      "description": "Server defaults for chunking and vector retrieval. Query requests can override topK and filters.",
+      "fields": [
+        {
+          "id": "chunking-strategy",
+          "key": "Rag:ChunkingStrategy",
+          "section": "Rag",
+          "option": "ChunkingStrategy",
+          "environmentAliases": [
+            "CHUNKING_STRATEGY"
+          ],
+          "type": "select",
+          "defaultValue": "fixed",
+          "placeholder": "fixed",
+          "secret": false,
+          "choices": [
+            "fixed",
+            "recursive",
+            "markdown-aware",
+            "semantic"
+          ],
+          "help": "Default ingestion chunking strategy.",
+          "appliesTo": "API ingestion or query pipeline",
+          "changeEffect": "restart",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "chunk-size",
+          "key": "Chunking:Size",
+          "section": "Chunking",
+          "option": "Size",
+          "environmentAliases": [
+            "CHUNK_SIZE"
+          ],
+          "type": "number",
+          "defaultValue": 800,
+          "placeholder": "800",
+          "secret": false,
+          "help": "Target chunk size in characters.",
+          "appliesTo": "API ingestion or query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "chunk-overlap",
+          "key": "Chunking:Overlap",
+          "section": "Chunking",
+          "option": "Overlap",
+          "environmentAliases": [
+            "CHUNK_OVERLAP"
+          ],
+          "type": "number",
+          "defaultValue": 120,
+          "placeholder": "120",
+          "secret": false,
+          "help": "Target overlap between chunks in characters.",
+          "appliesTo": "API ingestion or query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits.",
+          "minimum": 0,
+          "maximum": null
+        },
+        {
+          "id": "semantic-threshold",
+          "key": "Chunking:SemanticDistanceThreshold",
+          "section": "Chunking",
+          "option": "SemanticDistanceThreshold",
+          "environmentAliases": [
+            "SEMANTIC_DISTANCE_THRESHOLD"
+          ],
+          "type": "number",
+          "defaultValue": 0.22,
+          "placeholder": "0.22",
+          "secret": false,
+          "help": "Cosine distance threshold for semantic chunk boundaries; lower values split more often.",
+          "appliesTo": "API ingestion or query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "id": "ingestion-parallelism",
+          "key": "Ingestion:MaxDegreeOfParallelism",
+          "section": "Ingestion",
+          "option": "MaxDegreeOfParallelism",
+          "environmentAliases": [
+            "INGESTION_MAX_DEGREE_OF_PARALLELISM",
+            "INGESTION_MAX_PARALLELISM"
+          ],
+          "type": "number",
+          "defaultValue": 4,
+          "placeholder": "4",
+          "secret": false,
+          "help": "Maximum parallel source items; both environment names are supported.",
+          "appliesTo": "API ingestion or query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        }
+      ]
+    },
+    {
+      "id": "query",
+      "title": "Query defaults",
+      "description": "API defaults for query-time retrieval. Requests can override supported fields; demo-only controls are not server settings.",
+      "fields": [
+        {
+          "id": "query-top-k",
+          "key": "Query:TopK",
+          "section": "Query",
+          "option": "TopK",
+          "environmentAliases": [
+            "QUERY_TOP_K"
+          ],
+          "type": "number",
+          "defaultValue": 5,
+          "placeholder": "5",
+          "secret": false,
+          "help": "Default number of passages returned for a query.",
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "query-mode",
+          "key": "Query:Mode",
+          "section": "Query",
+          "option": "Mode",
+          "environmentAliases": [
+            "QUERY_MODE"
+          ],
+          "type": "select",
+          "defaultValue": "vector",
+          "placeholder": "vector",
+          "secret": false,
+          "help": "Default retrieval mode.",
+          "choices": [
+            "vector",
+            "hybrid"
+          ],
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "query-reranker",
+          "key": "Query:Reranker",
+          "section": "Query",
+          "option": "Reranker",
+          "environmentAliases": [
+            "QUERY_RERANKER"
+          ],
+          "type": "boolean",
+          "defaultValue": false,
+          "placeholder": "false",
+          "secret": false,
+          "help": "Enable the configured backend reranker by default.",
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Use true or false."
+        },
+        {
+          "id": "query-min-relevance",
+          "key": "Query:MinRelevance",
+          "section": "Query",
+          "option": "MinRelevance",
+          "environmentAliases": [
+            "QUERY_MIN_RELEVANCE"
+          ],
+          "type": "number",
+          "defaultValue": 0.7,
+          "placeholder": "0.7",
+          "secret": false,
+          "help": "Minimum relevance threshold for returned query results.",
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "id": "query-neighbors",
+          "key": "Query:Neighbors",
+          "section": "Query",
+          "option": "Neighbors",
+          "environmentAliases": [
+            "QUERY_NEIGHBORS"
+          ],
+          "type": "boolean",
+          "defaultValue": false,
+          "placeholder": "false",
+          "secret": false,
+          "help": "Expand query context with neighboring chunks by default.",
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Use true or false."
+        },
+        {
+          "id": "query-max-context-tokens",
+          "key": "Query:MaxContextTokens",
+          "section": "Query",
+          "option": "MaxContextTokens",
+          "environmentAliases": [
+            "QUERY_MAX_CONTEXT_TOKENS"
+          ],
+          "type": "number",
+          "defaultValue": 4096,
+          "placeholder": "4096",
+          "secret": false,
+          "help": "Default context token budget for query assembly.",
+          "appliesTo": "API-side query pipeline",
+          "changeEffect": "restart",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "title": "Document & job storage",
+      "description": "Select memory, local file, MongoDB, or Cosmos DB storage providers.",
+      "fields": [
+        {
+          "id": "document-provider",
+          "key": "DocumentStore:Provider",
+          "section": "DocumentStore",
+          "option": "Provider",
+          "environmentAliases": [
+            "DOC_STORE"
+          ],
+          "type": "select",
+          "defaultValue": "memory",
+          "placeholder": "memory",
+          "secret": false,
+          "choices": [
+            "memory",
+            "file",
+            "mongo",
+            "cosmos"
+          ],
+          "help": "Document-store provider. MongoDB and Cosmos DB require their provider packages.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "reindex",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "document-connection",
+          "key": "DocumentStore:ConnectionString",
+          "section": "DocumentStore",
+          "option": "ConnectionString",
+          "environmentAliases": [
+            "MONGO_CONNECTION_STRING",
+            "COSMOS_CONNECTION_STRING"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "mongodb://mongo:27017",
+          "secret": true,
+          "help": "Provider connection string; MongoDB and Cosmos DB aliases are applied by selected provider.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "cosmos-endpoint",
+          "key": "DocumentStore:Endpoint",
+          "section": "DocumentStore",
+          "option": "Endpoint",
+          "environmentAliases": [
+            "COSMOS_ENDPOINT"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://account.documents.azure.com:443/",
+          "secret": false,
+          "help": "Cosmos DB endpoint alternative to a connection string.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "cosmos-key",
+          "key": "DocumentStore:Key",
+          "section": "DocumentStore",
+          "option": "Key",
+          "environmentAliases": [
+            "COSMOS_KEY"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Cosmos DB key",
+          "secret": true,
+          "help": "Cosmos DB key; keep it server-side.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "document-database",
+          "key": "DocumentStore:DatabaseName",
+          "section": "DocumentStore",
+          "option": "DatabaseName",
+          "environmentAliases": [
+            "MONGO_DATABASE",
+            "COSMOS_DATABASE"
+          ],
+          "type": "text",
+          "defaultValue": "rag",
+          "placeholder": "rag",
+          "secret": false,
+          "help": "Document database name.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "chunk-container",
+          "key": "DocumentStore:ContainerName",
+          "section": "DocumentStore",
+          "option": "ContainerName",
+          "environmentAliases": [
+            "MONGO_CHUNKS_COLLECTION",
+            "COSMOS_CHUNKS_CONTAINER"
+          ],
+          "type": "text",
+          "defaultValue": "chunks",
+          "placeholder": "chunks",
+          "secret": false,
+          "help": "Chunk collection or container name.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "documents-container",
+          "key": "DocumentStore:DocumentsContainerName",
+          "section": "DocumentStore",
+          "option": "DocumentsContainerName",
+          "environmentAliases": [
+            "MONGO_DOCUMENTS_COLLECTION",
+            "COSMOS_DOCUMENTS_CONTAINER"
+          ],
+          "type": "text",
+          "defaultValue": "documents",
+          "placeholder": "documents",
+          "secret": false,
+          "help": "Document collection or container name.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "document-local-path",
+          "key": "DocumentStore:LocalPath",
+          "section": "DocumentStore",
+          "option": "LocalPath",
+          "environmentAliases": [],
+          "type": "text",
+          "defaultValue": ".rag/document-store",
+          "placeholder": ".rag/document-store",
+          "secret": false,
+          "help": "Local document-store path for the file provider.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "job-provider",
+          "key": "JobStore:Provider",
+          "section": "JobStore",
+          "option": "Provider",
+          "environmentAliases": [
+            "JOB_STORE"
+          ],
+          "type": "select",
+          "defaultValue": "memory",
+          "placeholder": "memory",
+          "secret": false,
+          "choices": [
+            "memory",
+            "mongo"
+          ],
+          "help": "Ingestion job-store provider.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "job-connection",
+          "key": "JobStore:ConnectionString",
+          "section": "JobStore",
+          "option": "ConnectionString",
+          "environmentAliases": [
+            "MONGO_CONNECTION_STRING"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "mongodb://mongo:27017",
+          "secret": true,
+          "help": "MongoDB connection string for persistent jobs.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "job-database",
+          "key": "JobStore:DatabaseName",
+          "section": "JobStore",
+          "option": "DatabaseName",
+          "environmentAliases": [
+            "MONGO_DATABASE"
+          ],
+          "type": "text",
+          "defaultValue": "rag",
+          "placeholder": "rag",
+          "secret": false,
+          "help": "MongoDB job database name.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "job-collection",
+          "key": "JobStore:CollectionName",
+          "section": "JobStore",
+          "option": "CollectionName",
+          "environmentAliases": [
+            "MONGO_JOBS_COLLECTION"
+          ],
+          "type": "text",
+          "defaultValue": "ingestion_jobs",
+          "placeholder": "ingestion_jobs",
+          "secret": false,
+          "help": "MongoDB job collection name.",
+          "appliesTo": "API document or job store",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        }
+      ]
+    },
+    {
+      "id": "vectors",
+      "title": "Vector storage",
+      "description": "Configure the vector index used during ingestion and retrieval.",
+      "fields": [
+        {
+          "id": "vector-provider",
+          "key": "VectorStore:Provider",
+          "section": "VectorStore",
+          "option": "Provider",
+          "environmentAliases": [
+            "VECTOR_STORE"
+          ],
+          "type": "select",
+          "defaultValue": "memory",
+          "placeholder": "memory",
+          "secret": false,
+          "choices": [
+            "memory",
+            "elasticsearch"
+          ],
+          "help": "Vector-store provider.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "reindex",
+          "validation": "Choose one of the listed options."
+        },
+        {
+          "id": "vector-endpoint",
+          "key": "VectorStore:Endpoint",
+          "section": "VectorStore",
+          "option": "Endpoint",
+          "environmentAliases": [
+            "ELASTICSEARCH_URI"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "http://elasticsearch:9200",
+          "secret": false,
+          "help": "Elasticsearch base URL.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "reindex",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "vector-username",
+          "key": "VectorStore:Username",
+          "section": "VectorStore",
+          "option": "Username",
+          "environmentAliases": [
+            "ELASTICSEARCH_USERNAME"
+          ],
+          "type": "text",
+          "defaultValue": "",
+          "placeholder": "Optional username",
+          "secret": false,
+          "help": "Optional Elasticsearch HTTP basic-auth username.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "vector-password",
+          "key": "VectorStore:Password",
+          "section": "VectorStore",
+          "option": "Password",
+          "environmentAliases": [
+            "ELASTICSEARCH_PASSWORD"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Optional password",
+          "secret": true,
+          "help": "Optional Elasticsearch HTTP basic-auth password.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "vector-index",
+          "key": "VectorStore:IndexName",
+          "section": "VectorStore",
+          "option": "IndexName",
+          "environmentAliases": [
+            "ELASTICSEARCH_INDEX"
+          ],
+          "type": "text",
+          "defaultValue": "rag-chunks",
+          "placeholder": "rag-chunks",
+          "secret": false,
+          "help": "Elasticsearch index name.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "reindex",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "vector-dimensions",
+          "key": "VectorStore:Dimensions",
+          "section": "VectorStore",
+          "option": "Dimensions",
+          "environmentAliases": [
+            "ELASTICSEARCH_VECTOR_DIMENSIONS"
+          ],
+          "type": "number",
+          "defaultValue": 1536,
+          "placeholder": "1536",
+          "secret": false,
+          "help": "Vector dimensions. Must equal Llm:EmbeddingDimensions.",
+          "appliesTo": "API vector index and embedding model",
+          "changeEffect": "reindex",
+          "validation": "Must be a finite number; confirm any provider-specific limits."
+        }
+      ]
+    },
+    {
+      "id": "sources",
+      "title": "Cloud sources",
+      "description": "Optional source adapters. Credentials are placeholders only and should remain server-side.",
+      "fields": [
+        {
+          "id": "s3-region",
+          "key": "S3:Region",
+          "section": "S3",
+          "option": "Region",
+          "environmentAliases": [
+            "S3_REGION",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION"
+          ],
+          "type": "text",
+          "defaultValue": "us-east-1",
+          "placeholder": "us-east-1",
+          "secret": false,
+          "help": "AWS region used for S3 source enumeration.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation before deployment."
+        },
+        {
+          "id": "s3-service-url",
+          "key": "S3:ServiceUrl",
+          "section": "S3",
+          "option": "ServiceUrl",
+          "environmentAliases": [
+            "S3_ENDPOINT",
+            "S3_SERVICE_URL",
+            "AWS_ENDPOINT_URL"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://s3.us-east-1.amazonaws.com",
+          "secret": false,
+          "help": "Optional S3-compatible service endpoint, such as LocalStack.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        },
+        {
+          "id": "s3-force-path-style",
+          "key": "S3:ForcePathStyle",
+          "section": "S3",
+          "option": "ForcePathStyle",
+          "environmentAliases": [
+            "S3_FORCE_PATH_STYLE"
+          ],
+          "type": "boolean",
+          "defaultValue": true,
+          "placeholder": "true",
+          "secret": false,
+          "help": "Use path-style S3 requests; defaults to true.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Use true or false."
+        },
+        {
+          "id": "aws-access-key",
+          "key": "AWS_ACCESS_KEY_ID",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "AWS_ACCESS_KEY_ID"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "AWS access key ID",
+          "secret": true,
+          "help": "Read by the AWS SDK default credential chain, not bound as an options property.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "aws-secret-key",
+          "key": "AWS_SECRET_ACCESS_KEY",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "AWS_SECRET_ACCESS_KEY"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "AWS secret access key",
+          "secret": true,
+          "help": "Read by the AWS SDK default credential chain, not bound as an options property.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "aws-session-token",
+          "key": "AWS_SESSION_TOKEN",
+          "section": null,
+          "option": null,
+          "environmentAliases": [
+            "AWS_SESSION_TOKEN"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Optional AWS session token",
+          "secret": true,
+          "help": "Optional temporary credential token read by the AWS SDK default credential chain.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "azure-connection-string",
+          "key": "AzureBlob:ConnectionString",
+          "section": "AzureBlob",
+          "option": "ConnectionString",
+          "environmentAliases": [
+            "AZURE_BLOB_CONNECTION_STRING"
+          ],
+          "type": "password",
+          "defaultValue": "",
+          "placeholder": "Azure Blob connection string",
+          "secret": true,
+          "help": "Azure Blob connection string. Keep it server-side.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Review the selected provider documentation and keep credentials server-side."
+        },
+        {
+          "id": "azure-service-uri",
+          "key": "AzureBlob:ServiceUri",
+          "section": "AzureBlob",
+          "option": "ServiceUri",
+          "environmentAliases": [
+            "AZURE_BLOB_SERVICE_URI",
+            "AZURE_BLOB_ENDPOINT"
+          ],
+          "type": "url",
+          "defaultValue": "",
+          "placeholder": "https://account.blob.core.windows.net",
+          "secret": false,
+          "help": "Azure Blob endpoint URI; connection string is the usual credentialed option.",
+          "appliesTo": "API source adapters",
+          "changeEffect": "restart",
+          "validation": "Use an absolute URL with the scheme and host reachable from the API container."
+        }
+      ]
+    }
+  ]
+}
