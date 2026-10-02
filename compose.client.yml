@@ -1,0 +1,111 @@
+services:
+  mongo:
+    image: mongo:8.0.32
+    profiles: [local-storage]
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [rag-private]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    profiles: [local-storage]
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 45s
+    networks: [rag-private]
+
+  localstack:
+    image: localstack/localstack:4.3.0
+    profiles: [s3-emulator]
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "127.0.0.1:4566:4566"
+    networks: [rag-private]
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.36.0
+    profiles: [azure-emulator]
+    restart: unless-stopped
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    ports:
+      - "127.0.0.1:10000:10000"
+      - "127.0.0.1:10001:10001"
+      - "127.0.0.1:10002:10002"
+    networks: [rag-private]
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Rag.Api/Dockerfile.client
+    restart: unless-stopped
+    env_file: .env.client
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:8080
+      LOCAL_SOURCE_ALLOWED_ROOTS: /documents
+      MONGO_CONNECTION_STRING: ${MONGO_CONNECTION_STRING:-mongodb://mongo:27017}
+      MONGO_DATABASE: ${MONGO_DATABASE:-rag}
+      DOC_STORE: ${DOC_STORE:-mongo}
+      JOB_STORE: ${JOB_STORE:-mongo}
+      VECTOR_STORE: ${VECTOR_STORE:-elasticsearch}
+      ELASTICSEARCH_URI: ${ELASTICSEARCH_URI:-http://elasticsearch:9200}
+      RAG_API_KEY: ${RAG_API_KEY:?Set RAG_API_KEY in .env.client}
+    volumes:
+      - ${CLIENT_DOCUMENTS_PATH:-./client-documents}:/documents:ro
+      - api-state:/app/.rag
+    expose: ["8080"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+        required: false
+      elasticsearch:
+        condition: service_healthy
+        required: false
+    networks: [rag-private]
+
+  playground:
+    build:
+      context: ./src/Rag.Playground
+      dockerfile: Dockerfile.client
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      RAG_API_URL: ${RAG_API_URL:-http://api:8080}
+      RAG_API_KEY: ${RAG_API_KEY:?Set RAG_API_KEY in .env.client}
+    ports:
+      - "127.0.0.1:${PLAYGROUND_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [rag-private]
+
+networks:
+  rag-private:
+    driver: bridge
+
+volumes:
+  api-state:
+  mongo-data:
+  elasticsearch-data:

@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0.301-noble AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/Rag.Api/Rag.Api.csproj --configuration Release --output /out
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-noble AS runtime
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y curl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --chown=app:app --from=build /out .
+RUN mkdir -p /app/.rag/document-store && chown -R app:app /app/.rag
+ENV ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 8080
+USER app
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=8 CMD curl --fail --silent --show-error --header "X-API-Key: $RAG_API_KEY" http://127.0.0.1:8080/api/v1/readiness | grep -q '"ready":true'
+ENTRYPOINT ["dotnet", "Rag.Api.dll"]

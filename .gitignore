@@ -4,6 +4,11 @@ obj/
 .vscode/
 .idea/
 .env
+.env.client
+generated.env.client
+appsettings.Client.json
+!.env.client.example
+client-documents/
 .rag/
 plans/
 TestResults/
