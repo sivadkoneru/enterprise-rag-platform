@@ -9,11 +9,17 @@ namespace Rag.Core.Workbench;
 
 public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor ingestor, DetailedQueryPipeline queries, ILogger<WorkbenchJobs> logger) : BackgroundService
 {
-    private readonly Channel<string> _queue = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<string> _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _active = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _changes = new(1, 1);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public async Task<WorkbenchJob> EnqueueIngestionAsync(string profileId, WorkbenchIngestionRequest request, CancellationToken token = default)
+    {
+        await _changes.WaitAsync(token).ConfigureAwait(false);
+        try { return await AdmitIngestionAsync(profileId, request, token).ConfigureAwait(false); }
+        finally { _changes.Release(); }
+    }
+    private async Task<WorkbenchJob> AdmitIngestionAsync(string profileId, WorkbenchIngestionRequest request, CancellationToken token)
     {
         await catalog.GetProfileAsync(profileId, token).ConfigureAwait(false);
         if (request.Sources is not { Count: > 0 and <= 100 } || request.Sources.Any(source => string.IsNullOrWhiteSpace(source) || source.Length > 4000))
@@ -21,8 +27,11 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
             throw new ArgumentException("Provide between 1 and 100 valid source paths or URIs.");
         }
 
-        var jobs = await ListAsync(profileId, token).ConfigureAwait(false);
-        if (jobs.Any(job => job.Kind == "ingestion" && job.Status is "queued" or "running" or "paused"))
+        var jobs = await ListAsync(null, token).ConfigureAwait(false);
+        if (jobs.Any(job => job.Kind == "evaluation" && job.Status is "queued" or "running" or "paused" &&
+            JsonSerializer.Deserialize<LiveEvaluationRequest>(job.Payload, Json)!.ProfileIds.Contains(profileId)))
+        { throw new ArgumentException("An evaluation owns this profile; finish or cancel it before ingestion."); }
+        if (jobs.Any(job => job.ProfileId == profileId && job.Kind == "ingestion" && job.Status is "queued" or "running" or "paused"))
         {
             throw new ArgumentException("An ingestion job is already active for this indexing profile.");
         }
@@ -31,7 +40,16 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
     }
     public async Task<WorkbenchJob> EnqueueEvaluationAsync(LiveEvaluationRequest request, CancellationToken token = default)
     {
+        await _changes.WaitAsync(token).ConfigureAwait(false);
+        try { return await AdmitEvaluationAsync(request, token).ConfigureAwait(false); }
+        finally { _changes.Release(); }
+    }
+    private async Task<WorkbenchJob> AdmitEvaluationAsync(LiveEvaluationRequest request, CancellationToken token)
+    {
         WorkbenchEvaluation.Validate(request);
+        var activeJobs = await ListAsync(null, token).ConfigureAwait(false);
+        if (activeJobs.Any(job => job.Kind == "ingestion" && job.ProfileId is not null && request.ProfileIds.Contains(job.ProfileId) && job.Status is "queued" or "running" or "paused"))
+        { throw new ArgumentException("An ingestion owns an evaluation profile."); }
         string? corpusId = null;
         foreach (var id in request.ProfileIds)
         {
@@ -57,15 +75,26 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
     }
     private async Task<WorkbenchJob> EnqueueAsync(string kind, string? profileId, int total, string payload, CancellationToken token)
     {
+        if ((await ListAsync(null, token).ConfigureAwait(false)).Count(job => job.Status is "queued" or "running" or "paused") >= 32)
+        { throw new WorkbenchCapacityException(); }
         var id = Guid.NewGuid().ToString("N");
         var job = new WorkbenchJob(id, kind, "queued", profileId, 0, total, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, payload);
-        await catalog.Store.SaveAsync("jobs", id, job, token).ConfigureAwait(false);
         if (kind == "evaluation")
         {
-            await catalog.Store.SaveAsync("evaluations", id, new LiveEvaluationReport(id, job.CreatedAt, "queued", [], [], WorkbenchEvaluation.GroundednessCaveat, 5), token).ConfigureAwait(false);
+            var request = JsonSerializer.Deserialize<LiveEvaluationRequest>(payload, Json)!;
+            var snapshots = new List<LiveProfileEvaluation>();
+            foreach (var profileIdToSnapshot in request.ProfileIds)
+            {
+                var profile = await catalog.GetProfileAsync(profileIdToSnapshot, token).ConfigureAwait(false);
+                snapshots.Add(new LiveProfileEvaluation(profile.Id, profile.Name, WorkbenchEvaluation.Aggregate([]), profile.EmbeddingOperations, 0, 0, [])
+                { ProfileSnapshot = profile, SourceRevision = await RevisionAsync(profile.Id, token).ConfigureAwait(false) });
+            }
+            await catalog.Store.SaveAsync("evaluations", id, new LiveEvaluationReport(id, job.CreatedAt, "queued", request.Questions, snapshots, WorkbenchEvaluation.GroundednessCaveat, request.TopK) { QuerySettings = request }, token).ConfigureAwait(false);
         }
 
-        await _queue.Writer.WriteAsync(id, token).ConfigureAwait(false);
+        await catalog.Store.SaveAsync("jobs", id, job, token).ConfigureAwait(false);
+        RagTelemetry.QueueDepth.Record((await ListAsync(null, token).ConfigureAwait(false)).Count(item => item.Status is "queued" or "running" or "paused"));
+        _queue.Writer.TryWrite(id);
         return job;
     }
     public Task<WorkbenchJob?> GetAsync(string id, CancellationToken token = default) => catalog.Store.GetAsync<WorkbenchJob>("jobs", id, token);
@@ -78,6 +107,7 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
         try
         {
             var job = await GetAsync(id, token).ConfigureAwait(false) ?? throw new KeyNotFoundException("Job not found.");
+            if (action == "resume" && _active.ContainsKey(id)) { throw new ArgumentException("The worker is still stopping; retry resume shortly."); }
             var status = action switch
             {
                 "pause" when job.Status is "queued" or "running" => "paused",
@@ -107,7 +137,7 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
         finally { _changes.Release(); }
         if (resume)
         {
-            await _queue.Writer.WriteAsync(id, token).ConfigureAwait(false);
+            _queue.Writer.TryWrite(id);
         }
 
         return result;
@@ -119,12 +149,17 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
         {
             try
             {
-                var existing = await ListAsync(null, stoppingToken).ConfigureAwait(false);
-                foreach (var job in existing.Where(job => job.Status is "queued" or "running"))
+                await _changes.WaitAsync(stoppingToken).ConfigureAwait(false);
+                try
                 {
-                    await catalog.Store.SaveAsync("jobs", job.Id, job with { Status = "queued", UpdatedAt = DateTimeOffset.UtcNow }, stoppingToken).ConfigureAwait(false);
-                    await _queue.Writer.WriteAsync(job.Id, stoppingToken).ConfigureAwait(false);
+                    var existing = await ListAsync(null, stoppingToken).ConfigureAwait(false);
+                    foreach (var job in existing.Where(job => job.Status is "queued" or "running"))
+                    {
+                        await catalog.Store.SaveAsync("jobs", job.Id, job with { Status = "queued", UpdatedAt = DateTimeOffset.UtcNow }, stoppingToken).ConfigureAwait(false);
+                        _queue.Writer.TryWrite(job.Id);
+                    }
                 }
+                finally { _changes.Release(); }
                 break;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -133,19 +168,28 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
                 await recoveryRetry.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false);
             }
         }
-        await foreach (var id in _queue.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            var job = await GetAsync(id, stoppingToken).ConfigureAwait(false);
-            if (job is null || job.Status != "queued")
-            {
-                continue;
-            }
-
+            WorkbenchJob? job;
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            _active[id] = cancellation;
+            await _changes.WaitAsync(stoppingToken).ConfigureAwait(false);
             try
             {
-                await SaveStatusAsync(id, "running", null, stoppingToken).ConfigureAwait(false);
+                job = (await ListAsync(null, stoppingToken).ConfigureAwait(false)).OrderBy(item => item.CreatedAt).FirstOrDefault(item => item.Status == "queued");
+                if (job is not null)
+                {
+                    _active[job.Id] = cancellation;
+                    await catalog.Store.SaveAsync("jobs", job.Id, job with { Status = "running" }, stoppingToken).ConfigureAwait(false);
+                }
+            }
+            finally { _changes.Release(); }
+            if (job is null) { await _queue.Reader.ReadAsync(stoppingToken).ConfigureAwait(false); continue; }
+            var id = job.Id;
+            using var jobActivity = RagTelemetry.Activities.StartActivity("job." + job.Kind);
+            jobActivity?.SetTag("rag.job.id", id);
+            try
+            {
+
                 async Task CheckAsync(CancellationToken token)
                 {
                     token.ThrowIfCancellationRequested();
@@ -170,13 +214,18 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
             catch (OperationCanceledException)
             {
                 var current = await GetAsync(id, CancellationToken.None).ConfigureAwait(false);
-                if (stoppingToken.IsCancellationRequested)
+                if (stoppingToken.IsCancellationRequested && current?.Status is not ("paused" or "canceled"))
                 {
                     await SaveStatusAsync(id, "queued", null, CancellationToken.None).ConfigureAwait(false);
                 }
                 else if (current?.Status is not ("paused" or "canceled"))
                 {
                     await SaveStatusAsync(id, cancellation.IsCancellationRequested ? "canceled" : "failed", cancellation.IsCancellationRequested ? null : "A provider request timed out.", CancellationToken.None).ConfigureAwait(false);
+                    if (job.ProfileId is not null)
+                    {
+                        var profile = await catalog.GetProfileAsync(job.ProfileId, CancellationToken.None).ConfigureAwait(false);
+                        await catalog.Store.SaveAsync("profiles", profile.Id, profile with { Status = "failed" }, CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception exception)
@@ -189,7 +238,16 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
                     await catalog.Store.SaveAsync("profiles", profile.Id, profile with { Status = "failed" }, stoppingToken).ConfigureAwait(false);
                 }
             }
-            finally { _active.TryRemove(id, out _); }
+            finally
+            {
+                var current = await GetAsync(id, CancellationToken.None).ConfigureAwait(false);
+                if (job.ProfileId is not null && current?.Status is "paused" or "canceled")
+                {
+                    var profile = await catalog.GetProfileAsync(job.ProfileId, CancellationToken.None).ConfigureAwait(false);
+                    await catalog.Store.SaveAsync("profiles", profile.Id, profile with { Status = current.Status }, CancellationToken.None).ConfigureAwait(false);
+                }
+                _active.TryRemove(id, out _);
+            }
         }
     }
     private async Task ProgressAsync(string id, int completed, CancellationToken token)
@@ -214,7 +272,7 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
                 return;
             }
 
-            if (status is "running" or "complete" && job.Status is "paused" or "canceled")
+            if (job.Status is "paused" or "canceled")
             {
                 return;
             }
@@ -240,7 +298,10 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
         {
             var profile = await catalog.GetProfileAsync(id, token).ConfigureAwait(false);
             var existing = profiles.FirstOrDefault(item => item.ProfileId == id);
-            var outcomes = existing?.Outcomes.ToList() ?? [];
+            var revision = await RevisionAsync(id, token).ConfigureAwait(false);
+            if (existing is null || existing.SourceRevision != revision || JsonSerializer.Serialize(existing.ProfileSnapshot, Json) != JsonSerializer.Serialize(profile, Json))
+            { throw new InvalidOperationException("Evaluation corpus or profile changed. Start a new run."); }
+            var outcomes = existing.Outcomes.ToList();
             foreach (var question in request.Questions)
             {
                 await check(token).ConfigureAwait(false);
@@ -260,6 +321,9 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
             }
         }
     }
+    private async Task<string> RevisionAsync(string id, CancellationToken token) => StableId.Compute(string.Join("\n",
+        (await catalog.GetDocumentsAsync(id, token).ConfigureAwait(false)).OrderBy(document => document.Id).Select(document => $"{document.Id}:{document.Content}")));
+
     public override void Dispose()
     {
         foreach (var active in _active.Values)
@@ -271,3 +335,5 @@ public sealed class WorkbenchJobs(WorkbenchCatalog catalog, WorkbenchIngestor in
         base.Dispose();
     }
 }
+
+public sealed class WorkbenchCapacityException : Exception;

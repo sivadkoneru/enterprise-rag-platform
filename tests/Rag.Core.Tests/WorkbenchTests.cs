@@ -165,7 +165,7 @@ public sealed class WorkbenchTests
     public async Task EvaluationRejectsMissingEvidenceBeforeCallingAnyModel()
     {
         var fixture = await Fixture.CreateAsync();
-        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog);
+        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
         using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
         var action = async () => await jobs.EnqueueEvaluationAsync(new LiveEvaluationRequest([fixture.Profile.Id], [new LiveEvaluationQuestion("q", "Question", "missing.md", [new EvaluationAnchor("missing phrase")])]));
         await action.Should().ThrowAsync<ArgumentException>();
@@ -179,7 +179,7 @@ public sealed class WorkbenchTests
         var fixture = await Fixture.CreateAsync();
         var first = await fixture.Catalog.CreateProfileAsync(fixture.Corpus.Id, new CreateProfileRequest("First", "fixed", 200, 20, "test", 2));
         var second = await fixture.Catalog.CreateProfileAsync(fixture.Corpus.Id, new CreateProfileRequest("Second", "recursive", 300, 0, "test", 2));
-        var ingestor = new WorkbenchIngestor(new SingleSource(), new SingleParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog);
+        var ingestor = new WorkbenchIngestor(new SingleSource(), new SingleParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
         foreach (var profile in new[] { first, second })
         {
             var job = new WorkbenchJob(Guid.NewGuid().ToString("N"), "ingestion", "running", profile.Id, 0, 1, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "");
@@ -217,7 +217,7 @@ public sealed class WorkbenchTests
     public async Task PausedJobsPersistTheirStateAndCanResumeWithoutChangingProfileSettings()
     {
         var fixture = await Fixture.CreateAsync();
-        var ingestor = new WorkbenchIngestor(new SingleSource(), new SingleParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog);
+        var ingestor = new WorkbenchIngestor(new SingleSource(), new SingleParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
         using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
         var job = await jobs.EnqueueIngestionAsync(fixture.Profile.Id, new WorkbenchIngestionRequest(["fixture.txt"]));
         (await jobs.ControlAsync(job.Id, "pause")).Status.Should().Be("paused");
@@ -284,6 +284,162 @@ public sealed class WorkbenchTests
         action.Should().Throw<ArgumentException>();
     }
 
+    [Fact]
+    public async Task ShorterReingestionRemovesObsoleteChunksAndVectors()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var profile = await fixture.Catalog.CreateProfileAsync(fixture.Corpus.Id, new CreateProfileRequest("Replace", "fixed", 200, 20, "test", 2));
+        var parser = new SingleParser();
+        var ingestor = new WorkbenchIngestor(new SingleSource(), parser, fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        var job = new WorkbenchJob("replacement", "ingestion", "running", profile.Id, 0, 1, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "{}");
+        await ingestor.IngestAsync(job, ["fixture.txt"], _ => Task.CompletedTask, (_, _) => Task.CompletedTask, CancellationToken.None);
+        var original = await fixture.Catalog.GetProfileAsync(profile.Id);
+        original.ChunkCount.Should().BeGreaterThan(1);
+        parser.Repetitions = 1;
+        await ingestor.IngestAsync(job, ["fixture.txt"], _ => Task.CompletedTask, (_, _) => Task.CompletedTask, CancellationToken.None);
+        var updated = await fixture.Catalog.GetProfileAsync(profile.Id);
+        updated.DocumentIds.Should().Equal(original.DocumentIds);
+        updated.ChunkCount.Should().Be(1);
+        var obsolete = original.ChunkIds.Except(updated.ChunkIds).ToArray();
+        (await fixture.Documents.GetChunksAsync(obsolete)).Should().BeEmpty();
+        (await fixture.Vectors.SearchAsync([1, 0], 100)).Select(result => result.ChunkId).Should().NotIntersectWith(obsolete);
+    }
+
+    [Fact]
+    public async Task QueuedEvaluationReservesItsProfileUntilCanceled()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var evaluation = await jobs.EnqueueEvaluationAsync(new LiveEvaluationRequest([fixture.Profile.Id], [new LiveEvaluationQuestion("refund", "Refund?", "guide.md", [new EvaluationAnchor("Refunds are available within thirty days.")])]));
+        var attempt = () => jobs.EnqueueIngestionAsync(fixture.Profile.Id, new WorkbenchIngestionRequest(["fixture.txt"]));
+        await attempt.Should().ThrowAsync<ArgumentException>();
+        await jobs.ControlAsync(evaluation.Id, "cancel");
+        (await attempt()).Status.Should().Be("queued");
+    }
+
+    [Fact]
+    public async Task ConcurrentSameProfileAdmissionHasOneWinner()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 12).Select(async _ =>
+        {
+            try { await jobs.EnqueueIngestionAsync(fixture.Profile.Id, new WorkbenchIngestionRequest(["fixture.txt"])); return true; }
+            catch (ArgumentException) { return false; }
+        }));
+        attempts.Count(success => success).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task IngestionRejectsModelChangesBeforeEmbeddingOrWriting()
+    {
+        var fixture = await Fixture.CreateAsync();
+        fixture.Llm.Value.EmbeddingModel = "different-model";
+        var ingestor = new WorkbenchIngestor(new SingleSource(), new SingleParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        var job = new WorkbenchJob("test", "ingestion", "running", fixture.Profile.Id, 0, 1, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "{}");
+        var act = () => ingestor.IngestAsync(job, ["fixture.txt"], _ => Task.CompletedTask, (_, _) => Task.CompletedTask, CancellationToken.None);
+        await act.Should().ThrowAsync<ArgumentException>();
+        fixture.Embeddings.Calls.Should().Be(0);
+        (await fixture.Catalog.GetProfileAsync(fixture.Profile.Id)).Status.Should().Be("ready");
+    }
+
+    [Fact]
+    public async Task EvaluationResumeRejectsChangedCorpusBeforeCallingModels()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var job = await jobs.EnqueueEvaluationAsync(EvaluationRequest(fixture));
+        await jobs.ControlAsync(job.Id, "pause");
+        var document = (await fixture.Catalog.GetDocumentsAsync(fixture.Profile.Id)).Single();
+        await fixture.State.SaveAsync("documents", document.Id, document with { Content = "The policy changed while paused." });
+        await jobs.ControlAsync(job.Id, "resume");
+        await jobs.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForStatusAsync(jobs, job.Id, "failed");
+            fixture.Chat.Calls.Should().Be(0);
+            fixture.Embeddings.Calls.Should().Be(0);
+            var report = await fixture.State.GetAsync<LiveEvaluationReport>("evaluations", job.Id);
+            report!.Status.Should().Be("failed");
+            report.Profiles.Should().OnlyContain(profile => profile.Outcomes.Count == 0);
+        }
+        finally { await jobs.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task QueueCapacityIncludesPausedJobsAndCancellationReleasesAdmission()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var ingestor = new WorkbenchIngestor(new EmptySourceResolver(), new EmptyParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var first = await jobs.EnqueueEvaluationAsync(EvaluationRequest(fixture));
+        await jobs.ControlAsync(first.Id, "pause");
+        for (var index = 1; index < 32; index++) { await jobs.EnqueueEvaluationAsync(EvaluationRequest(fixture)); }
+        var admit = () => jobs.EnqueueEvaluationAsync(EvaluationRequest(fixture));
+        await admit.Should().ThrowAsync<WorkbenchCapacityException>();
+        await jobs.ControlAsync(first.Id, "cancel");
+        (await admit()).Status.Should().Be("queued");
+    }
+
+    [Fact]
+    public async Task RestartRecoversRunningJobAndDuplicateWakeupsDoNotRepeatCompletedWork()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var parser = new SingleParser { Repetitions = 1 };
+        var ingestor = new WorkbenchIngestor(new SingleSource(), parser, fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var job = await jobs.EnqueueIngestionAsync(fixture.Profile.Id, new WorkbenchIngestionRequest(["fixture.txt"]));
+        await fixture.State.SaveAsync("jobs", job.Id, job with { Status = "running" });
+        await jobs.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForStatusAsync(jobs, job.Id, "complete");
+            // No-op controls cannot enqueue a second execution of a terminal job.
+            (await jobs.ControlAsync(job.Id, "resume")).Status.Should().Be("complete");
+            fixture.Embeddings.Calls.Should().Be(1);
+        }
+        finally { await jobs.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task ProviderTimeoutReconcilesJobAndProfileFailure()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var ingestor = new WorkbenchIngestor(new SingleSource(), new TimeoutParser(), fixture.Embeddings, fixture.Documents, fixture.VectorStores, fixture.Catalog, fixture.Llm);
+        using var jobs = new WorkbenchJobs(fixture.Catalog, ingestor, fixture.Pipeline, NullLogger<WorkbenchJobs>.Instance);
+        var job = await jobs.EnqueueIngestionAsync(fixture.Profile.Id, new WorkbenchIngestionRequest(["fixture.txt"]));
+        await jobs.StartAsync(CancellationToken.None);
+        try { await WaitForStatusAsync(jobs, job.Id, "failed"); }
+        finally { await jobs.StopAsync(CancellationToken.None); }
+        (await fixture.Catalog.GetProfileAsync(fixture.Profile.Id)).Status.Should().Be("failed");
+        (await jobs.GetAsync(job.Id))!.Error.Should().Be("A provider request timed out.");
+        fixture.Embeddings.Calls.Should().Be(0);
+    }
+
+    private static LiveEvaluationRequest EvaluationRequest(Fixture fixture) => new([fixture.Profile.Id],
+        [new LiveEvaluationQuestion("refund", "Refund?", "guide.md", [new EvaluationAnchor("Refunds are available within thirty days.")])]);
+
+    private static async Task WaitForStatusAsync(WorkbenchJobs jobs, string id, string expected)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while ((await jobs.GetAsync(id, deadline.Token))?.Status != expected)
+        {
+            await Task.Delay(10, deadline.Token);
+        }
+    }
+
+    private sealed class TimeoutParser : IDocumentParserResolver
+    {
+        public async IAsyncEnumerable<ParsedDocument> ParseAsync(string path, IReadOnlyDictionary<string, string>? attributes = null, string? contentType = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.FromException(new TaskCanceledException("Provider secret must not appear in job errors."));
+            yield break;
+        }
+    }
+
     private sealed class Fixture
     {
         public required InMemoryWorkbenchStateStore State { get; init; }
@@ -296,6 +452,7 @@ public sealed class WorkbenchTests
         public required IndexProfile Profile { get; init; }
         public required EmbeddingClient Embeddings { get; init; }
         public required ChatClient Chat { get; init; }
+        public required IOptions<LlmOptions> Llm { get; init; }
         public DetailedQueryRequest Request() => new("Refund policy", Corpus.Id, Profile.Id, TopK: 3, MinRelevance: 0);
         public static async Task<Fixture> CreateAsync(string answer = "Refunds are available within thirty days. [c1]", string provider = "openai")
         {
@@ -317,7 +474,7 @@ public sealed class WorkbenchTests
             await state.SaveAsync("documents", "doc", new WorkbenchDocument("doc", profile.Id, "guide.md", string.Join("\n", chunks.Select(chunk => chunk.Text)), 3, "file:///guide.md", profile.ChunkIds));
             var embeddings = new EmbeddingClient();
             var chat = new ChatClient(answer);
-            return new Fixture { State = state, Documents = documents, Vectors = vectors, VectorStores = vectorStores, Catalog = catalog, Corpus = corpus, Profile = profile, Embeddings = embeddings, Chat = chat, Pipeline = new DetailedQueryPipeline(catalog, embeddings, vectorStores, chat, new RerankerClient(), llm, vectorOptions) };
+            return new Fixture { Llm = llm, State = state, Documents = documents, Vectors = vectors, VectorStores = vectorStores, Catalog = catalog, Corpus = corpus, Profile = profile, Embeddings = embeddings, Chat = chat, Pipeline = new DetailedQueryPipeline(catalog, embeddings, vectorStores, chat, new RerankerClient(), llm, vectorOptions) };
         }
     }
     private sealed class EmbeddingClient : IEmbeddingClient
@@ -348,11 +505,12 @@ public sealed class WorkbenchTests
     }
     private sealed class SingleParser : IDocumentParserResolver
     {
+        public int Repetitions { get; set; } = 20;
         public async IAsyncEnumerable<ParsedDocument> ParseAsync(string path, IReadOnlyDictionary<string, string>? attributes = null, string? contentType = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await Task.CompletedTask;
-            var text = string.Join(" ", Enumerable.Repeat("Refunds are available within thirty days.", 20));
+            var text = string.Join(" ", Enumerable.Repeat("Refunds are available within thirty days.", Repetitions));
             yield return new ParsedDocument("parsed", text, new DocumentMetadata("parsed", "fixture.txt", "fixture.txt", ".txt", "text/plain", text.Length, DateTimeOffset.UtcNow));
         }
     }

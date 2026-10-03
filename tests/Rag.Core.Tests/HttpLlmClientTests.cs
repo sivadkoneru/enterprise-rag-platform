@@ -37,7 +37,7 @@ public sealed class HttpLlmClientTests
     }
 
     [Fact]
-    public async Task ServerErrorSurfacesStatusCodeAndBodyWithoutRetrying()
+    public async Task ServerErrorSurfacesStatusCodeWithoutLeakingBody()
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
         {
@@ -49,7 +49,7 @@ public sealed class HttpLlmClientTests
 
         var failure = await act.Should().ThrowAsync<HttpRequestException>();
         failure.Which.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
-        failure.Which.Message.Should().Contain("upstream exploded");
+        failure.Which.Message.Should().NotContain("upstream exploded");
         handler.Requests.Should().Be(1);
     }
 

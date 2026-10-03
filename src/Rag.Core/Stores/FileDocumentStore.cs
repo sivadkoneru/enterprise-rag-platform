@@ -8,8 +8,17 @@ using Rag.Core.Models;
 
 namespace Rag.Core.Stores;
 
-public sealed class FileDocumentStore(IOptions<DocumentStoreOptions> options, ILogger<FileDocumentStore> logger) : IDocumentStore
+public sealed class FileDocumentStore(IOptions<DocumentStoreOptions> options, ILogger<FileDocumentStore> logger) : IDocumentStore, IChunkDeletionStore
 {
+    public async Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        foreach (var chunk in await GetChunksAsync(chunkIds, cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (chunk.DocumentId == documentId) { File.Delete(Path.Combine(Root(), "chunks", $"{SafeName(chunk.Id)}.json")); }
+        }
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new(RagJson.Options) { WriteIndented = true };
 
     public async Task UpsertDocumentAsync(ParsedDocument document, CancellationToken cancellationToken = default)

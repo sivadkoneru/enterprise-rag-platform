@@ -21,6 +21,13 @@ public sealed record DetailedCitation(int Number, string ChunkId, string Documen
 public sealed record DetailedStage(string Id, string Name, string Status, long DurationMs, string Detail, IReadOnlyDictionary<string, object?> Diagnostics);
 public sealed record DetailedRun(string Id, DateTimeOffset CreatedAt, string Question, string CorpusId, string ProfileId, string Answer, IReadOnlyList<DetailedCitation> Citations, IReadOnlyList<DetailedCandidate> Candidates, IReadOnlyList<DetailedCandidate> Context, IReadOnlyList<DetailedStage> Trace, long TotalLatencyMs, int ContextTokens, int OutputTokens, string TokenUsageKind, bool Abstained, IReadOnlyList<string> InvalidCitations)
 {
+    public string? Provider { get; init; }
+    public string? EmbeddingModel { get; init; }
+    public string? ChatModel { get; init; }
+    public string? SystemPromptHash { get; init; }
+    public string? TraceId { get; init; }
+    public int? EmbeddingTokens { get; init; }
+    public int EmbeddingCalls { get; init; }
     public int? PromptTokens { get; init; }
     public int? TotalTokens { get; init; }
 }
@@ -36,6 +43,7 @@ public sealed record LiveProfileEvaluation(string ProfileId, string ProfileName,
 }
 public sealed record LiveEvaluationReport(string Id, DateTimeOffset CreatedAt, string Status, IReadOnlyList<LiveEvaluationQuestion> Questions, IReadOnlyList<LiveProfileEvaluation> Profiles, string GroundednessCaveat, int TopK)
 {
+    public int SchemaVersion { get; init; } = 2;
     public LiveEvaluationRequest? QuerySettings { get; init; }
 }
 public sealed class RerankerOptions

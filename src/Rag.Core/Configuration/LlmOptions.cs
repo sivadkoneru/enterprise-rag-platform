@@ -18,6 +18,8 @@ public sealed class LlmOptions
 
     public string SystemPrompt { get; set; } = "Answer only from the supplied context. If the answer is not present, say you don't know. Always cite sources when context is used.";
 
+    public int MaxOutputTokens { get; set; } = 1024;
+
     public int TimeoutSeconds { get; set; } = 60;
 
     public int RetryCount { get; set; } = 3;

@@ -74,10 +74,10 @@ public sealed class IngestionBackgroundService(
                 logger.LogInformation("Ingestion job {JobId} canceled.", job.Id);
                 await jobStore.MarkCanceledAsync(job.Id, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                logger.LogError(exception, "Ingestion job {JobId} failed.", job.Id);
-                await jobStore.MarkFailedAsync(job.Id, exception.Message, CancellationToken.None).ConfigureAwait(false);
+                logger.LogError( "Ingestion job {JobId} failed.", job.Id);
+                await jobStore.MarkFailedAsync(job.Id, "Ingestion failed. Check server diagnostics.", CancellationToken.None).ConfigureAwait(false);
             }
         }
     }
@@ -158,10 +158,10 @@ public sealed class IngestionBackgroundService(
                 {
                     await _jobStore.UpdateProgressAsync(_jobId, snapshot, CancellationToken.None).ConfigureAwait(false);
                 }
-                catch (Exception exception)
+                catch (Exception)
                 {
                     // A progress write is best-effort: losing one snapshot must not fail the job.
-                    _logger.LogWarning(exception, "Failed to persist ingestion progress for job {JobId}.", _jobId);
+                    _logger.LogWarning("Failed to persist ingestion progress for job {JobId}.", _jobId);
                 }
             }
         }

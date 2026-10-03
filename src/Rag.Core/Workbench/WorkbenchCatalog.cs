@@ -94,7 +94,7 @@ public sealed class WorkbenchCatalog(IWorkbenchStateStore store, IDocumentStore 
     }
 }
 
-public sealed class WorkbenchIngestor(IDocumentSourceResolver sources, IDocumentParserResolver parsers, IEmbeddingClient embeddings, IDocumentStore documents, WorkbenchVectorStores vectorStores, WorkbenchCatalog catalog)
+public sealed class WorkbenchIngestor(IDocumentSourceResolver sources, IDocumentParserResolver parsers, IEmbeddingClient embeddings, IDocumentStore documents, WorkbenchVectorStores vectorStores, WorkbenchCatalog catalog, IOptions<LlmOptions> llm)
 {
     public async Task IngestAsync(WorkbenchJob job, IReadOnlyList<string> sourceUris, Func<CancellationToken, Task> checkControl, Func<int, CancellationToken, Task> reportProgress, CancellationToken token)
     {
@@ -104,9 +104,13 @@ public sealed class WorkbenchIngestor(IDocumentSourceResolver sources, IDocument
         }
 
         var profile = await catalog.GetProfileAsync(job.ProfileId, token).ConfigureAwait(false);
+        if (profile.EmbeddingModel != WorkbenchModelIdentity.EmbeddingModel(llm.Value) || profile.EmbeddingDimensions != llm.Value.EmbeddingDimensions)
+        {
+            throw new ArgumentException("Profile embedding configuration differs from the active provider; create a new profile before ingestion.");
+        }
         var vectors = vectorStores.ForProfile(profile);
         var options = Options.Create(new ChunkingOptions { Size = profile.ChunkSize, Overlap = profile.ChunkOverlap, SemanticDistanceThreshold = profile.SemanticDistanceThreshold });
-        var counted = new CountingEmbeddingClient(embeddings);
+        var counted = new CountingEmbeddingClient(embeddings, profile.EmbeddingDimensions);
         IChunkingStrategy strategy = profile.Strategy switch
         {
             "fixed" => new FixedChunkingStrategy(options),
@@ -124,33 +128,46 @@ public sealed class WorkbenchIngestor(IDocumentSourceResolver sources, IDocument
             await checkControl(token).ConfigureAwait(false);
             await foreach (var item in sources.Resolve(uri).EnumerateAsync(uri, token).ConfigureAwait(false))
             {
+                if (File.Exists(item.LocalPath) && new FileInfo(item.LocalPath).Length > 2_000_000)
+                { throw new ArgumentException("Workbench source files must be at most 2 MB; split larger inputs before ingestion."); }
                 await using (item.ConfigureAwait(false))
                 {
                     await foreach (var parsed in parsers.ParseAsync(item.LocalPath, item.Attributes, cancellationToken: token).ConfigureAwait(false))
                     {
                         await checkControl(token).ConfigureAwait(false);
-                        var recordKey = parsed.Metadata.Attributes?.GetValueOrDefault("recordKey") ?? parsed.Id;
+                        var recordKey = parsed.Metadata.Attributes?.GetValueOrDefault("recordKey") ?? "document";
                         var id = StableId.Compute($"workbench:{profile.Id}:{item.Origin}:{item.Source}:{recordKey}");
                         var attributes = new Dictionary<string, string>(parsed.Metadata.Attributes ?? new Dictionary<string, string>()) { ["profileId"] = profile.Id, ["corpusId"] = profile.CorpusId };
                         var metadata = parsed.Metadata with { DocumentId = id, FileName = item.FileName, Source = item.Source, Origin = item.Origin, Attributes = attributes };
                         var document = new ParsedDocument(id, parsed.Text, metadata);
+                        if (!profile.DocumentIds.Contains(id) && profile.DocumentCount >= 1000)
+                        { throw new ArgumentException("The private reference profile is limited to 1,000 documents."); }
                         var chunks = await strategy.ChunkAsync(document, token).ConfigureAwait(false);
+                        if (chunks.Count + profile.ChunkCount > 20000)
+                        { throw new ArgumentException("The private reference profile is limited to 20,000 chunks; use a smaller corpus or new profile."); }
                         var records = new List<VectorRecord>();
                         foreach (var chunk in chunks)
                         {
                             await checkControl(token).ConfigureAwait(false);
                             var vector = await counted.EmbedAsync(chunk.Text, token).ConfigureAwait(false);
-                            if (vector.Count != profile.EmbeddingDimensions)
-                            {
-                                throw new InvalidDataException("Embedding provider returned dimensions that differ from the indexing profile.");
-                            }
+                            EmbeddingValidation.Validate(vector, profile.EmbeddingDimensions);
 
                             records.Add(new VectorRecord(chunk.Id, id, vector, new Dictionary<string, string> { ["source"] = item.Source, ["origin"] = item.Origin, ["fileName"] = item.FileName, ["fileType"] = FileTypes.Normalize(item.Extension), ["profileId"] = profile.Id, ["corpusId"] = profile.CorpusId, ["text"] = chunk.Text }));
+                        }
+                        var oldDocument = await catalog.Store.GetAsync<WorkbenchDocument>("documents", id, token).ConfigureAwait(false);
+                        var obsolete = (oldDocument?.ChunkIds ?? []).Except(chunks.Select(chunk => chunk.Id), StringComparer.Ordinal).ToArray();
+                        if (obsolete.Length > 0 && (vectors is not IChunkDeletionStore || documents is not IChunkDeletionStore))
+                        {
+                            throw new NotSupportedException("Replacing documents requires chunk deletion support in both stores.");
                         }
                         await documents.UpsertDocumentAsync(document, token).ConfigureAwait(false);
                         await documents.UpsertChunksAsync(chunks, token).ConfigureAwait(false);
                         await vectors.UpsertAsync(records, token).ConfigureAwait(false);
-                        var oldDocument = await catalog.Store.GetAsync<WorkbenchDocument>("documents", id, token).ConfigureAwait(false);
+                        if (obsolete.Length > 0)
+                        {
+                            await ((IChunkDeletionStore)vectors).DeleteChunksAsync(id, obsolete, token).ConfigureAwait(false);
+                            await ((IChunkDeletionStore)documents).DeleteChunksAsync(id, obsolete, token).ConfigureAwait(false);
+                        }
                         await catalog.Store.SaveAsync("documents", id, new WorkbenchDocument(id, profile.Id, item.FileName, document.Text, chunks.Count, item.Source, chunks.Select(chunk => chunk.Id).ToArray()), token).ConfigureAwait(false);
                         var documentIds = profile.DocumentIds.Append(id).Distinct(StringComparer.Ordinal).ToArray();
                         var removedIds = oldDocument?.ChunkIds ?? [];
@@ -163,15 +180,17 @@ public sealed class WorkbenchIngestor(IDocumentSourceResolver sources, IDocument
             completed++;
             await reportProgress(completed, token).ConfigureAwait(false);
         }
+        await checkControl(token).ConfigureAwait(false);
         await catalog.Store.SaveAsync("profiles", profile.Id, profile with { Status = "ready" }, token).ConfigureAwait(false);
     }
-    private sealed class CountingEmbeddingClient(IEmbeddingClient inner) : IEmbeddingClient
+    private sealed class CountingEmbeddingClient(IEmbeddingClient inner, int dimensions) : IEmbeddingClient
     {
         private int _count;
         public int TakeCount() { var count = _count; _count = 0; return count; }
         public async Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
         {
             var result = await inner.EmbedAsync(input, cancellationToken).ConfigureAwait(false);
+            EmbeddingValidation.Validate(result, dimensions);
             _count++;
             return result;
         }

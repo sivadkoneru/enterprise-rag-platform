@@ -3,6 +3,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <ProjectReference Include="..\Rag.Core\Rag.Core.csproj" />
     <ProjectReference Include="..\Rag.Providers.Aws\Rag.Providers.Aws.csproj" />

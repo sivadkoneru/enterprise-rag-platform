@@ -59,6 +59,23 @@ public sealed class CloudSourceGuardTests
         items.Select(item => item.FileName).Should().Equal("a.txt");
     }
 
+    [Fact]
+    public async Task ObjectPrefixMatchingIsCaseSensitive()
+    {
+        var source = new FakeCloudSource(AllowedPrefixes("s3://corp-docs/Private"));
+        var act = () => ReadAllAsync(source, "s3://corp-docs/private");
+        await act.Should().ThrowAsync<SourcePathNotAllowedException>();
+    }
+
+    [Fact]
+    public async Task EveryReturnedObjectMustRemainWithinTheAllowedPrefix()
+    {
+        var source = new FakeCloudSource(AllowedPrefixes("s3://corp-docs/policies"));
+        // This fake deliberately returns a.txt outside the requested prefix.
+        var act = () => ReadAllAsync(source, "s3://corp-docs/policies");
+        await act.Should().ThrowAsync<SourcePathNotAllowedException>();
+    }
+
     private static IOptions<CloudSourceOptions> AllowedPrefixes(params string[] prefixes)
     {
         var options = new CloudSourceOptions();

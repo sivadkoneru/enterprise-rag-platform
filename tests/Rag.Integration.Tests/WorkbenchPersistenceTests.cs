@@ -17,7 +17,7 @@ public sealed class WorkbenchPersistenceTests
     [Fact]
     public async Task MongoCatalogProfilesJobsAndReportsPersistAcrossAdapterInstances()
     {
-        await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder().WithImage("mongo:7").WithPortBinding(27017, true).WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017)).Build());
+        await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder().WithImage("mongo:8.0.32").WithPortBinding(27017, true).WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017)).Build());
         var options = Options.Create(new DocumentStoreOptions { Provider = "mongo", ConnectionString = $"mongodb://localhost:{mongo.GetMappedPublicPort(27017)}", DatabaseName = $"workbench_{Guid.NewGuid():N}" });
         var first = new MongoWorkbenchStateStore(options);
         var corpus = new WorkbenchCorpus("corpus", "Actual corpus", "Persistent", DateTimeOffset.UtcNow);

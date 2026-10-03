@@ -7,8 +7,13 @@ using Rag.Core.Models;
 
 namespace Rag.Core.Stores;
 
-public sealed class MongoDocumentStore : IDocumentStore
+public sealed class MongoDocumentStore : IDocumentStore, IChunkDeletionStore
 {
+    public Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        return _chunks.DeleteManyAsync(Builders<TextChunk>.Filter.Eq(chunk => chunk.DocumentId, documentId) & Builders<TextChunk>.Filter.In(chunk => chunk.Id, chunkIds), cancellationToken);
+    }
+
     private readonly IMongoCollection<ParsedDocument> _documents;
     private readonly IMongoCollection<TextChunk> _chunks;
     private readonly ILogger<MongoDocumentStore> _logger;

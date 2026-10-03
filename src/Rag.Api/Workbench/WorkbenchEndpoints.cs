@@ -15,12 +15,14 @@ public static class WorkbenchEndpoints
         api.AddEndpointFilter(async (context, next) =>
         {
             try { return await next(context).ConfigureAwait(false); }
+            catch (WorkbenchCapacityException) { context.HttpContext.Response.Headers.RetryAfter = "60"; return Results.Problem(statusCode: 429, title: "Workbench capacity reached"); }
             catch (ArgumentException exception) { return Results.Problem(statusCode: 400, title: "Invalid request", detail: exception.Message); }
             catch (KeyNotFoundException) { return Results.Problem(statusCode: 404, title: "Not found"); }
         });
         api.MapGet("/capabilities", (IOptions<LlmOptions> llm, IOptions<DocumentStoreOptions> documents, IOptions<VectorStoreOptions> vectors, IOptions<JobStoreOptions> jobs, IOptions<RerankerOptions> reranker, IOptions<WorkbenchQueryOptions> queryDefaults) => Results.Ok(new
         {
             schemaVersion = 1, reranker = !string.IsNullOrWhiteSpace(reranker.Value.Endpoint), hybrid = true,
+            chatModel = WorkbenchModelIdentity.ChatModel(llm.Value), systemPromptHash = WorkbenchModelIdentity.SystemPromptHash(llm.Value), maxOutputTokens = llm.Value.MaxOutputTokens, retryCount = llm.Value.RetryCount,
             embeddingModel = WorkbenchModelIdentity.EmbeddingModel(llm.Value), embeddingDimensions = llm.Value.EmbeddingDimensions,
             documentStore = documents.Value.Provider, vectorStore = vectors.Value.Provider, jobStore = jobs.Value.Provider,
             workbenchJobStore = jobs.Value.Provider, defaultQuery = queryDefaults.Value,

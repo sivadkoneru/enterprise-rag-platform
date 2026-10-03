@@ -5,8 +5,14 @@ using Rag.Core.Models;
 
 namespace Rag.Core.Vector;
 
-public sealed class InMemoryVectorStore : IVectorStore
+public sealed class InMemoryVectorStore : IVectorStore, IChunkDeletionStore
 {
+    public Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        foreach (var id in chunkIds) { cancellationToken.ThrowIfCancellationRequested(); if (_records.TryGetValue(id, out var record) && record.DocumentId == documentId) { _records.TryRemove(id, out _); } }
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentDictionary<string, VectorRecord> _records = new();
 
     public Task EnsureIndexAsync(CancellationToken cancellationToken = default)

@@ -14,6 +14,7 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
 {
     public async Task<DetailedRun> QueryAsync(DetailedQueryRequest request, Func<DetailedStage, CancellationToken, Task>? onStage = null, CancellationToken token = default)
     {
+        using var queryActivity = RagTelemetry.Activities.StartActivity("query");
         Validate(request);
         var profile = await catalog.GetProfileAsync(request.ProfileId, token).ConfigureAwait(false);
         var vectors = vectorStores.ForProfile(profile);
@@ -45,6 +46,20 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
         var estimatedContextTokens = 0;
         var extraEmbeddingCalls = 0;
         ChatCompletionResult? completion = null;
+        int? embeddingTokens = 0;
+        var embeddingCalls = 0;
+        async Task<IReadOnlyList<float>> EmbedAsync(string text)
+        {
+            embeddingCalls++;
+            if (embeddings is IEmbeddingUsageClient detailed)
+            {
+                var result = await detailed.EmbedDetailedAsync(text, token).ConfigureAwait(false);
+                embeddingTokens = embeddingTokens is not null && result.InputTokens is not null ? embeddingTokens + result.InputTokens : null;
+                return result.Vector;
+            }
+            embeddingTokens = null;
+            return await embeddings.EmbedAsync(text, token).ConfigureAwait(false);
+        }
         async Task StageAsync(string id, string name, Func<Task> action, string detail, IReadOnlyDictionary<string, object?>? diagnostics = null, bool skip = false)
         {
             var stage = new DetailedStage(id, name, skip ? "skipped" : "running", 0, detail, diagnostics ?? new Dictionary<string, object?>());
@@ -59,11 +74,13 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
                 return;
             }
 
+            using var stageActivity = RagTelemetry.Activities.StartActivity($"query.{id}");
             var clock = Stopwatch.StartNew();
             try
             {
                 await action().ConfigureAwait(false);
                 stage = stage with { Status = "complete", DurationMs = clock.ElapsedMilliseconds };
+                RagTelemetry.StageLatency.Record(clock.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("stage", id));
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -86,11 +103,8 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
         await StageAsync("enhancement", "Query normalization", () => Task.CompletedTask, "No query enhancement provider configured", skip: true).ConfigureAwait(false);
         await StageAsync("embedding", "Embedding", async () =>
         {
-            queryVector = await embeddings.EmbedAsync(request.Question.Trim(), token).ConfigureAwait(false);
-            if (queryVector.Count != profile.EmbeddingDimensions)
-            {
-                throw new InvalidDataException("Embedding dimensions differ from the indexed profile.");
-            }
+            queryVector = await EmbedAsync(request.Question.Trim()).ConfigureAwait(false);
+            EmbeddingValidation.Validate(queryVector, profile.EmbeddingDimensions);
         }, "Embedding query with the configured provider", new Dictionary<string, object?> { ["model"] = profile.EmbeddingModel, ["dimensions"] = profile.EmbeddingDimensions, ["provider"] = llm.Value.Provider }).ConfigureAwait(false);
         await StageAsync("search", request.Mode == "hybrid" ? "Vector + BM25 hybrid search" : "Vector search", async () =>
         {
@@ -126,11 +140,8 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
                 var chunk = byId[id];
                 if (!vectorScores.TryGetValue(id, out var vectorScore))
                 {
-                    var embedding = await embeddings.EmbedAsync(chunk.Text, token).ConfigureAwait(false);
-                    if (embedding.Count != queryVector.Count)
-                    {
-                        throw new InvalidDataException("Embedding dimensions changed during hybrid search.");
-                    }
+                    var embedding = await EmbedAsync(chunk.Text).ConfigureAwait(false);
+                    EmbeddingValidation.Validate(embedding, queryVector.Count);
 
                     extraEmbeddingCalls++;
                     vectorScore = Math.Clamp((VectorMath.CosineSimilarity(queryVector, embedding) + 1) / 2, 0, 1);
@@ -246,7 +257,7 @@ public sealed class DetailedQueryPipeline(WorkbenchCatalog catalog, IEmbeddingCl
             }
             return Task.CompletedTask;
         }, "Only citations emitted by the model and resolving to admitted context are valid", new Dictionary<string, object?> { ["validation"] = "ID resolution; does not prove semantic entailment" }).ConfigureAwait(false);
-        return new DetailedRun(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, request.Question, profile.CorpusId, profile.Id, answer, citations, candidates, context, trace, totalClock.ElapsedMilliseconds, estimatedContextTokens, completion?.CompletionTokens ?? EstimateTokens(answer), completion?.CompletionTokens is null ? "estimated-chars/4" : "provider-output/context-estimated-chars/4", abstained, invalid) { PromptTokens = completion?.PromptTokens, TotalTokens = completion?.TotalTokens };
+        return new DetailedRun(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, request.Question, profile.CorpusId, profile.Id, answer, citations, candidates, context, trace, totalClock.ElapsedMilliseconds, estimatedContextTokens, completion?.CompletionTokens ?? EstimateTokens(answer), completion?.CompletionTokens is null ? "estimated-chars/4" : "provider-output/context-estimated-chars/4", abstained, invalid) { Provider = llm.Value.Provider, EmbeddingModel = profile.EmbeddingModel, ChatModel = WorkbenchModelIdentity.ChatModel(llm.Value), SystemPromptHash = WorkbenchModelIdentity.SystemPromptHash(llm.Value), TraceId = Activity.Current?.TraceId.ToString(), EmbeddingTokens = embeddingTokens, EmbeddingCalls = embeddingCalls, PromptTokens = completion?.PromptTokens, TotalTokens = completion?.TotalTokens };
     }
     public static void Validate(DetailedQueryRequest request)
     {

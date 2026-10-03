@@ -18,7 +18,7 @@ internal static class StructuredSchemaLoader
             attributes.TryGetValue(SchemaPathAttribute, out var fromAttribute) &&
             !string.IsNullOrWhiteSpace(fromAttribute)
                 ? fromAttribute
-                : FindLocalSchema(path);
+                : attributes?.ContainsKey("schemaResolved") == true ? null : FindLocalSchema(path);
 
         if (string.IsNullOrWhiteSpace(schemaPath) || !File.Exists(schemaPath))
         {
@@ -50,19 +50,19 @@ internal static class StructuredSchemaLoader
         return profile;
     }
 
-    public static string? FindLocalSchema(string path)
+    public static string? FindLocalSchema(string path, Func<string, bool>? allowed = null)
     {
-        var exact = CandidateSchemaPaths(path).FirstOrDefault(File.Exists);
+        var exact = CandidateSchemaPaths(path).FirstOrDefault(candidate => (allowed?.Invoke(candidate) ?? true) && File.Exists(candidate));
         if (!string.IsNullOrWhiteSpace(exact))
         {
             return exact;
         }
 
         var directory = Path.GetDirectoryName(path);
-        while (!string.IsNullOrWhiteSpace(directory))
+        while (!string.IsNullOrWhiteSpace(directory) && (allowed?.Invoke(directory) ?? true))
         {
             var schema = Path.Combine(directory, "rag-ingestion.schema.json");
-            if (File.Exists(schema))
+            if ((allowed?.Invoke(schema) ?? true) && File.Exists(schema))
             {
                 return schema;
             }
@@ -88,7 +88,7 @@ internal static class StructuredSchemaLoader
         var lastSeparator = sourceName.LastIndexOf('/');
         var prefix = lastSeparator < 0 ? string.Empty : sourceName[..(lastSeparator + 1)];
         names.Add($"{prefix}rag-ingestion.schema.json");
-        return names.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return names.Distinct(StringComparer.Ordinal).ToArray();
     }
 
     private static IEnumerable<string> CandidateSchemaPaths(string path)

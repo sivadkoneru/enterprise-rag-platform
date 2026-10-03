@@ -1,5 +1,9 @@
 using System.Security.Cryptography;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
@@ -10,6 +14,7 @@ using Rag.Core.Abstractions;
 using Rag.Core.Configuration;
 using Rag.Core.DependencyInjection;
 using Rag.Core.Models;
+using Rag.Core.Jobs;
 using Rag.Providers.Aws;
 using Rag.Providers.AzureBlob;
 using Rag.Providers.Cosmos;
@@ -35,6 +40,27 @@ if (!string.IsNullOrWhiteSpace(configuredUrls))
     builder.WebHost.UseUrls(configuredUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 }
 
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 2_000_000);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        await context.HttpContext.Response.WriteAsJsonAsync(new { detail = "Private workbench capacity reached. Retry later." }, token).ConfigureAwait(false);
+    };
+    // Single-operator budgets, shared by all callers. Origin and profile IDs are not identities.
+    options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+        PartitionedRateLimiter.Create<HttpContext, string>(context => RateLimitPartition.GetConcurrencyLimiter(
+            context.Request.Path.StartsWithSegments("/health") ? "health" : "work", key => new ConcurrencyLimiterOptions { PermitLimit = key == "health" ? 16 : 4, QueueLimit = 0 })),
+        PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        {
+            var path = context.Request.Path.Value ?? "";
+            var workload = path.Contains("/checks/", StringComparison.Ordinal) ? "checks" : path.Contains("ingest", StringComparison.Ordinal) ? "ingestion" : path.Contains("evaluations", StringComparison.Ordinal) && context.Request.Method == "POST" ? "evaluation" : path.Contains("quer", StringComparison.Ordinal) ? "query" : "metadata";
+            return RateLimitPartition.GetFixedWindowLimiter(workload, key => new FixedWindowRateLimiterOptions
+            { PermitLimit = key switch { "checks" => 10, "ingestion" => 10, "evaluation" => 4, "query" => 60, _ => 600 }, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true });
+        }));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -46,6 +72,12 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddRagPlatform(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+{
+    builder.Services.AddOpenTelemetry().ConfigureResource(resource => resource.AddService("rag-api"))
+        .WithTracing(tracing => tracing.AddSource("Rag.Workbench").AddOtlpExporter())
+        .WithMetrics(metrics => metrics.AddMeter("Rag.Workbench").AddOtlpExporter());
+}
 
 // Opt-in provider packages: registered here so every documented DOC_STORE / JOB_STORE / source
 // scheme (mongo, cosmos, s3, azureblob) keeps working exactly as it does today. A deployment that
@@ -62,6 +94,15 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<RagExceptionHandler>();
 
 var app = builder.Build();
+var models = app.Services.GetRequiredService<IOptions<LlmOptions>>().Value;
+if (!models.Provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase) &&
+    (string.IsNullOrWhiteSpace(models.EmbeddingModel) || string.IsNullOrWhiteSpace(models.ChatModel) || !DirectEndpoint(models.EmbeddingEndpoint) || !DirectEndpoint(models.ChatEndpoint)))
+{ throw new InvalidOperationException("HTTP models require model identifiers and direct HTTP(S) endpoints without embedded credentials or fragments."); }
+var vectorSettings = app.Services.GetRequiredService<IOptions<VectorStoreOptions>>().Value;
+if (vectorSettings.Provider.Equals("elasticsearch", StringComparison.OrdinalIgnoreCase) && (!DirectEndpoint(vectorSettings.Endpoint) || vectorSettings.Dimensions != models.EmbeddingDimensions))
+{ throw new InvalidOperationException("Elasticsearch requires a direct endpoint and dimensions matching the embedding provider."); }
+static bool DirectEndpoint(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Fragment);
+
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -88,6 +129,8 @@ else
             detail: "A valid X-API-Key header is required.").ExecuteAsync(context).ConfigureAwait(false);
     });
 }
+
+app.UseRateLimiter();
 
 app.UseSwagger();
 app.UseSwaggerUI(options =>
@@ -270,7 +313,7 @@ internal static class ApiKeyAuthorization
 }
 
 /// <summary>
-/// Maps platform exceptions to problem responses. Exception messages are logged, never returned:
+/// Maps platform exceptions to problem responses. Exception messages are omitted from responses and logs:
 /// they embed resolved absolute paths, store connection strings, and other host detail that an
 /// unauthenticated caller must not learn. Correlate a response with its log entry by trace id.
 /// </summary>
@@ -281,6 +324,7 @@ internal sealed class RagExceptionHandler(IProblemDetailsService problemDetailsS
     {
         var (status, detail) = exception switch
         {
+            IngestionCapacityException => (StatusCodes.Status429TooManyRequests, "Ingestion capacity reached. Retry later."),
             SourcePathNotAllowedException => (StatusCodes.Status403Forbidden, "The requested path is outside the allowed ingestion roots."),
             FileNotFoundException or DirectoryNotFoundException => (StatusCodes.Status404NotFound, "The requested document was not found."),
             NotSupportedException => (StatusCodes.Status400BadRequest, "The requested document type is not supported."),
@@ -289,12 +333,12 @@ internal sealed class RagExceptionHandler(IProblemDetailsService problemDetailsS
         };
 
         logger.LogError(
-            exception,
-            "{Method} {Path} failed with status {Status}.",
+            "{Method} {Path} failed with status {Status} ({ErrorType}).",
             httpContext.Request.Method,
             httpContext.Request.Path,
-            status);
+            status, exception.GetType().Name);
 
+        if (status == 429) { httpContext.Response.Headers.RetryAfter = "60"; }
         httpContext.Response.StatusCode = status;
         return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
         {
@@ -324,7 +368,7 @@ internal static class IngestionJobApiExtensions
             processedSourceCount = job.ProcessedSourceCount,
             currentSource = job.CurrentSource,
             workerId = job.WorkerId,
-            error = job.Error,
+            error = job.Error is null ? null : "Ingestion failed. Check server diagnostics.",
             createdAt = job.CreatedAt,
             updatedAt = job.UpdatedAt,
             startedAt = job.StartedAt,

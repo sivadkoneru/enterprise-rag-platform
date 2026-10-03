@@ -27,13 +27,14 @@ public abstract class CloudDocumentSource(IOptions<CloudSourceOptions> options) 
         EnsureAllowed(sourceUri);
         var (container, prefix) = Parse(sourceUri);
         var keys = await ListKeysAsync(container, prefix, cancellationToken).ConfigureAwait(false);
-        var keySet = keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var keySet = keys.ToHashSet(StringComparer.Ordinal);
 
         foreach (var key in keys
             .Where(DocumentSourceSupport.IsSupported)
             .OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            EnsureAllowed($"{Scheme}://{container}/{key}");
             var localPath = DocumentSourceSupport.TempPathFor(key);
             await DownloadAsync(container, key, localPath, cancellationToken).ConfigureAwait(false);
 
@@ -45,6 +46,7 @@ public abstract class CloudDocumentSource(IOptions<CloudSourceOptions> options) 
             var schemaKey = FindSchemaKey(key, keySet);
             if (!string.IsNullOrWhiteSpace(schemaKey))
             {
+                EnsureAllowed($"{Scheme}://{container}/{schemaKey}");
                 var schemaPath = DocumentSourceSupport.TempPathFor(schemaKey);
                 await DownloadAsync(container, schemaKey, schemaPath, cancellationToken).ConfigureAwait(false);
                 attributes[StructuredSchemaLoader.SchemaPathAttribute] = schemaPath;
@@ -90,8 +92,11 @@ public abstract class CloudDocumentSource(IOptions<CloudSourceOptions> options) 
     private static bool MatchesPrefix(string sourceUri, string prefix)
     {
         var trimmed = prefix.TrimEnd('/');
-        return sourceUri.Equals(trimmed, StringComparison.OrdinalIgnoreCase) ||
-            sourceUri.StartsWith(trimmed + "/", StringComparison.OrdinalIgnoreCase);
+        if (!Uri.TryCreate(sourceUri, UriKind.Absolute, out var source) || !Uri.TryCreate(trimmed, UriKind.Absolute, out var allowed)) { return false; }
+        return source.Scheme.Equals(allowed.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            source.Host.Equals(allowed.Host, StringComparison.OrdinalIgnoreCase) &&
+            (source.AbsolutePath.Equals(allowed.AbsolutePath, StringComparison.Ordinal) ||
+             source.AbsolutePath.StartsWith(allowed.AbsolutePath.TrimEnd('/') + "/", StringComparison.Ordinal));
     }
 
     private static string? FindSchemaKey(string key, ISet<string> keys)

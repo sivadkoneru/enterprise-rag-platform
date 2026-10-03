@@ -4,8 +4,14 @@ using Rag.Core.Models;
 
 namespace Rag.Core.Stores;
 
-public sealed class InMemoryDocumentStore : IDocumentStore
+public sealed class InMemoryDocumentStore : IDocumentStore, IChunkDeletionStore
 {
+    public Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        foreach (var id in chunkIds) { cancellationToken.ThrowIfCancellationRequested(); if (_chunks.TryGetValue(id, out var chunk) && chunk.DocumentId == documentId) { _chunks.TryRemove(id, out _); } }
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentDictionary<string, ParsedDocument> _documents = new();
     private readonly ConcurrentDictionary<string, TextChunk> _chunks = new();
 

@@ -13,9 +13,14 @@ namespace Rag.Core.Llm;
 public sealed class HttpLlmClient(
     IHttpClientFactory httpClientFactory,
     IOptions<LlmOptions> options,
-    ILogger<HttpLlmClient> logger) : IEmbeddingClient, IChatUsageClient
+    ILogger<HttpLlmClient> logger) : IEmbeddingUsageClient, IChatUsageClient
 {
     public async Task<IReadOnlyList<float>> EmbedAsync(string input, CancellationToken cancellationToken = default)
+    {
+        return (await EmbedDetailedAsync(input, cancellationToken).ConfigureAwait(false)).Vector;
+    }
+
+    public async Task<EmbeddingResult> EmbedDetailedAsync(string input, CancellationToken cancellationToken = default)
     {
         var config = options.Value;
         if (string.IsNullOrWhiteSpace(config.EmbeddingEndpoint))
@@ -30,10 +35,7 @@ public sealed class HttpLlmClient(
             input
         });
 
-        logger.LogDebug(
-            "Calling embedding endpoint {Endpoint} with model {Model}.",
-            config.EmbeddingEndpoint,
-            config.EmbeddingModel);
+        logger.LogDebug("Calling embedding provider.");
         var payload = await SendAsync(request, "embedding", cancellationToken).ConfigureAwait(false);
         using var document = JsonDocument.Parse(payload);
         if (!document.RootElement.TryGetProperty("data", out var data) ||
@@ -44,7 +46,9 @@ public sealed class HttpLlmClient(
             throw new InvalidOperationException("The embedding endpoint returned a response without a 'data[0].embedding' array.");
         }
 
-        return embedding.EnumerateArray().Select(value => value.GetSingle()).ToArray();
+        int? tokens = document.RootElement.TryGetProperty("usage", out var usage) && usage.TryGetProperty("total_tokens", out var total) && total.TryGetInt32(out var count) && count >= 0 ? count : null;
+        if (tokens is not null) { RagTelemetry.Tokens.Add(tokens.Value, new KeyValuePair<string, object?>("operation", "embedding")); }
+        return new EmbeddingResult(embedding.EnumerateArray().Select(value => value.GetSingle()).ToArray(), tokens);
     }
 
     public async Task<string> CompleteAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default)
@@ -64,13 +68,11 @@ public sealed class HttpLlmClient(
         request.Content = JsonContent(new
         {
             model = config.ChatModel,
+            max_tokens = config.MaxOutputTokens,
             messages = messages.Select(message => new { role = message.Role, content = message.Content })
         });
 
-        logger.LogDebug(
-            "Calling chat endpoint {Endpoint} with model {Model}.",
-            config.ChatEndpoint,
-            config.ChatModel);
+        logger.LogDebug("Calling chat provider.");
         var payload = await SendAsync(request, "chat", cancellationToken).ConfigureAwait(false);
         using var document = JsonDocument.Parse(payload);
         if (!document.RootElement.TryGetProperty("choices", out var choices) ||
@@ -93,21 +95,16 @@ public sealed class HttpLlmClient(
     // AddRagPlatform, so this sends the request exactly once and lets the pipeline retry it.
     private async Task<string> SendAsync(HttpRequestMessage request, string operation, CancellationToken cancellationToken)
     {
+        using var activity = RagTelemetry.Activities.StartActivity($"model.{operation}");
         var client = httpClientFactory.CreateClient("rag-llm");
         using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning(
-                "The LLM {Operation} endpoint returned {StatusCode} ({ReasonPhrase}): {Payload}",
-                operation,
-                (int)response.StatusCode,
-                response.ReasonPhrase,
-                Truncate(payload));
-            throw new HttpRequestException(
-                $"The LLM {operation} endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}): {Truncate(payload)}",
-                inner: null,
-                response.StatusCode);
+            RagTelemetry.ProviderFailures.Add(1, new KeyValuePair<string, object?>("operation", operation));
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error);
+            logger.LogWarning("LLM {Operation} failed with HTTP {StatusCode}.", operation, (int)response.StatusCode);
+            throw new HttpRequestException($"LLM {operation} failed with HTTP {(int)response.StatusCode}.", null, response.StatusCode);
         }
 
         return payload;
@@ -130,9 +127,4 @@ public sealed class HttpLlmClient(
         return new StringContent(JsonSerializer.Serialize(payload, RagJson.Options), Encoding.UTF8, "application/json");
     }
 
-    private static string Truncate(string payload)
-    {
-        const int limit = 500;
-        return payload.Length <= limit ? payload : $"{payload[..limit]}...";
-    }
 }

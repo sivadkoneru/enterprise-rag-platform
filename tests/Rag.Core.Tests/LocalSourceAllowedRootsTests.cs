@@ -101,6 +101,26 @@ public sealed class LocalSourceAllowedRootsTests : IDisposable
         await act.Should().ThrowAsync<SourcePathNotAllowedException>();
     }
 
+    [Fact]
+    public async Task AncestorDirectorySymlinksCannotEscapeAllowedRoots()
+    {
+        var link = Path.Combine(_allowedRoot, "linked-directory");
+        Directory.CreateSymbolicLink(link, _forbiddenRoot);
+        var source = new LocalDirectorySource(Options.Create(Restricted()));
+        var act = () => ReadAllAsync(source, Path.Combine(link, "secret.txt"));
+        await act.Should().ThrowAsync<SourcePathNotAllowedException>();
+    }
+
+    [Fact]
+    public async Task SchemaSymlinksOutsideAllowedRootAreNotOpened()
+    {
+        File.WriteAllText(Path.Combine(_forbiddenRoot, "schema.json"), "secret");
+        File.CreateSymbolicLink(Path.Combine(_allowedRoot, "allowed.txt.schema.json"), Path.Combine(_forbiddenRoot, "schema.json"));
+        var items = await ReadAllAsync(new LocalDirectorySource(Options.Create(Restricted())), Path.Combine(_allowedRoot, "allowed.txt"));
+        items.Single().Attributes.Should().NotContainKey("schemaPath");
+        items.Single().Attributes.Should().ContainKey("schemaResolved");
+    }
+
     public void Dispose()
     {
         Directory.Delete(_allowedRoot, recursive: true);

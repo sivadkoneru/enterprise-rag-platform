@@ -7,8 +7,18 @@ using Rag.Core.Models;
 
 namespace Rag.Core.Stores;
 
-public sealed class CosmosDocumentStore(IOptions<DocumentStoreOptions> options, ILogger<CosmosDocumentStore> logger) : IDocumentStore, IDisposable
+public sealed class CosmosDocumentStore(IOptions<DocumentStoreOptions> options, ILogger<CosmosDocumentStore> logger) : IDocumentStore, IChunkDeletionStore, IDisposable
 {
+    public async Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        var containers = await GetContainersAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var id in chunkIds)
+        {
+            try { await containers.Chunks.DeleteItemAsync<CosmosChunk>(id, new PartitionKey(documentId), cancellationToken: cancellationToken).ConfigureAwait(false); }
+            catch (CosmosException exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound) { /* Idempotent cleanup after an interrupted ingestion. */ }
+        }
+    }
+
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private CosmosClient? _client;
     private Container? _documents;

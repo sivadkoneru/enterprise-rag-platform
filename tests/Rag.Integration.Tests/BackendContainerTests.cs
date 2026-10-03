@@ -22,7 +22,7 @@ public sealed class BackendContainerTests
     public async Task MongoDocumentStorePersistsAndHydratesChunks()
     {
         await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
-            .WithImage("mongo:7")
+            .WithImage("mongo:8.0.32")
             .WithPortBinding(27017, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017))
             .Build());
@@ -82,6 +82,10 @@ public sealed class BackendContainerTests
                 new VectorRecord("chunk-a", "doc", [1, 0, 0], new Dictionary<string, string>()),
                 new VectorRecord("chunk-b", "doc", [0, 1, 0], new Dictionary<string, string>())
             ]);
+        await store.UpsertAsync(Enumerable.Range(0, 25).Select(index => new VectorRecord($"extra-{index}", "other", [0.8f, 0.2f, 0], new Dictionary<string, string>())).ToArray());
+        (await store.SearchAsync([1, 0, 0], 20)).Should().HaveCount(20);
+        await store.DeleteChunksAsync("other", Enumerable.Range(0, 25).Select(index => $"extra-{index}").ToArray());
+        (await store.SearchAsync([1, 0, 0], 20)).Should().HaveCount(2);
         var results = await store.SearchAsync([1, 0, 0], 1);
 
         results.Should().ContainSingle();
@@ -92,7 +96,7 @@ public sealed class BackendContainerTests
     public async Task PipelineIngestsAndQueriesThroughMongoAndElasticsearch()
     {
         await using var mongo = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
-            .WithImage("mongo:7")
+            .WithImage("mongo:8.0.32")
             .WithPortBinding(27017, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(27017))
             .Build());

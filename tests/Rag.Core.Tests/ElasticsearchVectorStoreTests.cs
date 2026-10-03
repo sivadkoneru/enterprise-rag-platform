@@ -120,6 +120,16 @@ public sealed class ElasticsearchVectorStoreTests
         handler.Requests[0].Body.Should().NotContain("PDF", "ingestion writes lower-case file types");
     }
 
+    [Fact]
+    public async Task CandidatePoolAboveTenSetsTheResponseSize()
+    {
+        var handler = new RecordingHandler(_ => Json("""{"hits":{"hits":[]}}"""));
+        await Store(handler).SearchAsync([1, 0], 37);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.Requests.Single().Body);
+        body.RootElement.GetProperty("size").GetInt32().Should().Be(37);
+        body.RootElement.GetProperty("knn").GetProperty("k").GetInt32().Should().Be(37);
+    }
+
     private static ElasticsearchVectorStore Store(RecordingHandler handler)
     {
         return new ElasticsearchVectorStore(

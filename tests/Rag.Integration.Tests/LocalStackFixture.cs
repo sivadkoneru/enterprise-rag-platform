@@ -26,7 +26,7 @@ public sealed class LocalStackFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _container = await DockerPrerequisite.StartAsync(() => new ContainerBuilder()
-            .WithImage("localstack/localstack:3")
+            .WithImage("localstack/localstack:4.3.0")
             .WithEnvironment("SERVICES", "s3")
             .WithEnvironment("AWS_DEFAULT_REGION", "us-east-1")
             .WithPortBinding(4566, true)

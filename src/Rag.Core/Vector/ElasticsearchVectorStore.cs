@@ -16,7 +16,7 @@ namespace Rag.Core.Vector;
 public sealed class ElasticsearchVectorStore(
     IHttpClientFactory httpClientFactory,
     IOptions<VectorStoreOptions> options,
-    ILogger<ElasticsearchVectorStore> logger) : IVectorStore, ILexicalSearchStore
+    ILogger<ElasticsearchVectorStore> logger) : IVectorStore, ILexicalSearchStore, IChunkDeletionStore
 {
     public async Task EnsureIndexAsync(CancellationToken cancellationToken = default)
     {
@@ -132,6 +132,7 @@ public sealed class ElasticsearchVectorStore(
         var filterClauses = BuildFilter(filter);
         var payload = new
         {
+            size = Math.Clamp(topK, 1, 400),
             knn = BuildKnn(queryVector, topK, filterClauses),
             _source = new[] { "chunkId", "documentId" }
         };
@@ -152,6 +153,23 @@ public sealed class ElasticsearchVectorStore(
         }
 
         return results;
+    }
+
+    public async Task DeleteChunksAsync(string documentId, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        if (chunkIds.Count == 0) { return; }
+        var payload = new { query = new { @bool = new { filter = new object[] {
+            new { term = new { documentId } },
+            new { terms = new { chunkId = chunkIds } }
+        } } } };
+        using var response = await Client().PostAsJsonAsync($"{IndexPath()}/_delete_by_query?refresh=true", payload, RagJson.Options, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        if (result.RootElement.TryGetProperty("failures", out var failures) && failures.GetArrayLength() > 0 ||
+            result.RootElement.TryGetProperty("timed_out", out var timedOut) && timedOut.GetBoolean())
+        {
+            throw new InvalidOperationException("Obsolete vector cleanup failed; retry ingestion before querying this profile.");
+        }
     }
 
     public async Task<IReadOnlyList<VectorSearchResult>> SearchLexicalAsync(string question, int topK, VectorSearchFilter filter, CancellationToken cancellationToken = default)

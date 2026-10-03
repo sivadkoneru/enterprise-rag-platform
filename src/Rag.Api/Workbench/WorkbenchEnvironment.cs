@@ -98,7 +98,7 @@ public sealed class WorkbenchEnvironment(IServiceProvider services, IConfigurati
                 details["scoredDocuments"] = scores.Count;
                 details["model"] = rerankerOptions.Model;
             }
-            return new { name = kind, status = "healthy", message = "A real request to the configured provider succeeded.", latencyMs = clock.ElapsedMilliseconds, details };
+            return new { name = kind, status = "healthy", message = llm.Provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase) && kind != "reranker" ? "Deterministic local execution succeeded; no external inference request was made." : "Inference request to the configured HTTP provider succeeded.", latencyMs = clock.ElapsedMilliseconds, details };
         }
         catch (Exception exception) when (!token.IsCancellationRequested && exception is not OutOfMemoryException)
         {

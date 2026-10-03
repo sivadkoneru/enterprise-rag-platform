@@ -17,6 +17,7 @@ namespace Rag.Core.DependencyInjection;
 
 public static class RagServiceCollectionExtensions
 {
+
     public static IServiceCollection AddRagPlatform(this IServiceCollection services, IConfiguration configuration)
     {
         // Registered explicitly rather than relied on transitively: AddHttpClient happens to call
@@ -114,6 +115,9 @@ public static class RagServiceCollectionExtensions
             options.ApiKey = configuration["RAG_API_KEY"] ?? options.ApiKey;
         });
 
+        services.AddOptions<ChunkingOptions>().Validate(options => options.Size is >= 1 and <= 16000 && options.Overlap >= 0 && options.Overlap < options.Size && double.IsFinite(options.SemanticDistanceThreshold) && options.SemanticDistanceThreshold is >= 0 and <= 2, "Invalid chunk size, overlap or semantic distance.").ValidateOnStart();
+        services.AddOptions<LlmOptions>().Validate(options => options.MaxOutputTokens is >= 1 and <= 8192 && options.EmbeddingDimensions is > 0 and <= 4096 && options.TimeoutSeconds is > 0 and <= 300 && options.RetryCount is >= 0 and <= 5 && options.RetryBackoffSeconds is >= 0 and <= 60, "Invalid model dimensions, timeout or retry budget.").ValidateOnStart();
+        services.AddOptions<VectorStoreOptions>().Validate(options => options.Dimensions is > 0 and <= 4096, "Invalid vector dimensions or Elasticsearch endpoint.").ValidateOnStart();
         var llmHttpOptions = BuildLlmOptions(configuration);
         var llmAttemptTimeout = TimeSpan.FromSeconds(llmHttpOptions.TimeoutSeconds);
         var llmRetryCount = llmHttpOptions.RetryCount;
@@ -124,7 +128,7 @@ public static class RagServiceCollectionExtensions
         services.AddHttpClient("rag-llm", client =>
         {
             client.Timeout = llmTotalTimeout;
-        }).AddStandardResilienceHandler(options =>
+        }).RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddStandardResilienceHandler(options =>
         {
             options.AttemptTimeout.Timeout = llmAttemptTimeout;
             options.TotalRequestTimeout.Timeout = llmTotalTimeout;
@@ -134,7 +138,7 @@ public static class RagServiceCollectionExtensions
                 options.CircuitBreaker.SamplingDuration,
                 llmCircuitBreakerSamplingDuration);
         });
-        services.AddHttpClient("rag-elasticsearch").AddStandardResilienceHandler();
+        services.AddHttpClient("rag-elasticsearch").RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddStandardResilienceHandler();
 
         services.AddSingleton<IDocumentParser, TxtDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
@@ -316,10 +320,11 @@ public static class RagServiceCollectionExtensions
         options.EmbeddingDimensions = Int(configuration["LLM_EMBEDDING_DIMENSIONS"], options.EmbeddingDimensions);
         options.ChatEndpoint = configuration["LLM_CHAT_ENDPOINT"] ?? options.ChatEndpoint;
         options.ChatModel = configuration["LLM_CHAT_MODEL"] ?? options.ChatModel;
+        options.MaxOutputTokens = Int(configuration["LLM_MAX_OUTPUT_TOKENS"], options.MaxOutputTokens);
         options.SystemPrompt = configuration["LLM_SYSTEM_PROMPT"] ?? options.SystemPrompt;
         options.TimeoutSeconds = PositiveInt(configuration["LLM_TIMEOUT_SECONDS"] ?? configuration["HTTP_TIMEOUT_SECONDS"], options.TimeoutSeconds);
-        options.RetryCount = PositiveInt(configuration["LLM_RETRY_COUNT"] ?? configuration["HTTP_RETRY_COUNT"], options.RetryCount);
-        options.RetryBackoffSeconds = PositiveInt(configuration["LLM_RETRY_BACKOFF_SECONDS"] ?? configuration["HTTP_RETRY_BACKOFF_SECONDS"], options.RetryBackoffSeconds);
+        options.RetryCount = Int(configuration["LLM_RETRY_COUNT"] ?? configuration["HTTP_RETRY_COUNT"], options.RetryCount);
+        options.RetryBackoffSeconds = Int(configuration["LLM_RETRY_BACKOFF_SECONDS"] ?? configuration["HTTP_RETRY_BACKOFF_SECONDS"], options.RetryBackoffSeconds);
     }
 
     private static LlmOptions BuildLlmOptions(IConfiguration configuration)
@@ -336,16 +341,17 @@ public static class RagServiceCollectionExtensions
 
     private static int Int(string? value, int fallback)
     {
-        return int.TryParse(value, out var parsed) ? parsed : fallback;
+        return value is null ? fallback : int.TryParse(value, out var parsed) ? parsed : throw new ArgumentException("Malformed integer configuration.");
     }
 
     private static int PositiveInt(string? value, int fallback)
     {
-        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+        var parsed = Int(value, fallback);
+        return parsed > 0 ? parsed : throw new ArgumentException("Configuration value must be positive.");
     }
 
     private static double Double(string? value, double fallback)
     {
-        return double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+        return value is null ? fallback : double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed) && double.IsFinite(parsed) ? parsed : throw new ArgumentException("Malformed numeric configuration.");
     }
 }
