@@ -1,16 +1,64 @@
 # Enterprise RAG Platform
 
-A generic, plug-and-play Retrieval-Augmented Generation platform for .NET. The platform ingests `txt`, `md`, `pdf`, `html`, and schema-described `csv`/`json`/`jsonl` documents, parses and chunks them, stores documents and chunk metadata in a document store, indexes vectors, and answers grounded questions through separately configured embedding and chat endpoints.
+Turn internal documents into answers users can verify against source evidence.
 
-## Demo
+A RAG reference platform with an interactive demo, inspectable retrieval, provider integrations,
+and reproducible evaluation. Next.js provides the workbench; .NET handles ingestion, retrieval,
+and generation through configurable storage, search, and model adapters.
 
-Cold clone to a grounded, cited answer — build, start the API, ingest the sample docs, and query — with no Docker, no `.env`, and no API key (in-memory stores, deterministic LLM):
+## Try the interactive demo
 
-![Cold clone to a grounded, cited answer](docs/demo/quickstart.gif)
+**[Run Rag.Playground locally](src/Rag.Playground/README.md)** ·
+**[Private live setup](docs/client-deployment.md)** ·
+**[Architecture and trust boundaries](docs/architecture.md)**
+
+Interactive simulation using prepared documents. **No external model or search calls.**
+A public deployment URL will be added only after deployment verification; there is no published
+real-model quality or latency claim in this release candidate.
+
+```bash
+cd src/Rag.Playground
+npm ci
+npm run build
+npm start
+```
+
+Open <http://localhost:3000>. Requires Node 24. Demo mode is the server default and disables
+`/api/client/*`, even if backend credentials were accidentally supplied.
+
+Start with the refund question, open a citation, inspect the retrieved policy, then try an unsupported
+question. [Watch the recorded simulation](docs/demo/portfolio/simulation.webm) (prepared fixtures; no model calls). See the [portfolio recording guide](docs/portfolio.md) for the five selected views and
+50-second walkthrough. Measured results and private-live recordings must retain their provenance labels.
+
+![Demo simulation: answer with three references and an inspected source](docs/demo/portfolio/answer-evidence.png)
+
+| Execution | Search / models | Purpose |
+|---|---|---|
+| Browser simulation | Topic matching, prepared text, illustrative scores and scripted durations | Explore the workflow safely |
+| Private connected backend, deterministic models | Actual .NET ingestion/stores/retrieval; local hashed embeddings and deterministic answer generation | Reproduce integration behavior without paid inference |
+| Private connected backend, HTTP models | Actual configured embedding/chat endpoints; optional HTTP reranker | Measure model-dependent quality and operating cost |
+
+## Evaluation evidence
+
+The [50-question deterministic benchmark](evals/results/benchmark.md) is a byte-reproducible
+regression test, not a semantic-model benchmark. Its copied-answer overlap and harness abstention
+classification are diagnostics, not production accuracy claims.
+
+The separate [measured evaluation runner](evals/Rag.LiveEvals/README.md) records real provider
+identities, failures, usage provenance, latency and estimated cost. **No real-model baseline has
+been published yet.** Semantic judge scores require human review. Missing measurements stay null.
+
+[Verification evidence](docs/evidence/README.md) records the checks actually performed, the small
+deterministic load smoke, and remaining release steps.
+
+The stack is .NET 10, Next.js/React, Elasticsearch, optional MongoDB/Cosmos/S3/Blob adapters,
+and HTTP embedding/chat endpoints. This is a single-operator reference implementation;
+[operating limits](docs/operations.md) explicitly exclude public anonymous live execution,
+distributed workers and tenant authorization.
 
 ## Status
 
-The solution targets `.NET 10` through `Directory.Build.props`; this machine currently has .NET SDK `10.0.301`.
+The solution pins .NET SDK `10.0.301` in `global.json`. Playground uses Node 24 and npm with its committed lockfile. Docker Engine with Compose v2 is required for integration and deployment smoke tests.
 
 Implemented surfaces in the current tree:
 
@@ -20,6 +68,7 @@ Implemented surfaces in the current tree:
 - `Rag.Providers.Aws`, `Rag.Providers.AzureBlob`, `Rag.Providers.Cosmos`, `Rag.Providers.Mongo`:
   opt-in satellite packages for S3, Azure Blob, Cosmos DB, and MongoDB, each owning its own provider
   SDK dependency.
+- `Rag.Playground` Next.js browser simulation and private live workbench, with production-build browser checks.
 - `Rag.Api` minimal API endpoints with Swagger, referencing all four provider packages.
 - `Rag.Cli` commands for ingest, chunk preview, query, and config display, referencing all four
   provider packages.
@@ -49,6 +98,7 @@ src/
   Rag.Providers.AzureBlob/  Opt-in Azure Blob Storage document source
   Rag.Providers.Cosmos/   Opt-in Cosmos DB document store
   Rag.Providers.Mongo/    Opt-in MongoDB document store and job store
+  Rag.Playground/         Next.js interactive demo and private live workbench
   Rag.Api/                ASP.NET Core Web API
   Rag.Cli/                Command-line interface
 tests/
@@ -56,6 +106,8 @@ tests/
   Rag.Evals.Tests/       Dataset integrity, scorers, and evaluation regression floors
   Rag.Integration.Tests/ Integration/provider tests and backend container coverage
 evals/
+  Rag.LiveEvals/     Measured API evaluation runner (separate from regression)
+  live/             Draft versioned synthetic dataset and run configuration
   Rag.Evals/         Evaluation harness: corpus generator, golden dataset, scorers, report writer
   corpus/            Distractor documents with deliberately conflicting policy numbers
   results/           Committed benchmark tables and per-question results
@@ -163,7 +215,7 @@ CHUNKING_STRATEGY=recursive
 dotnet build -warnaserror
 
 # Start local backing services when using MongoDB or Elasticsearch
-docker-compose up -d
+docker compose up -d
 
 # Configure local environment when selecting non-default providers
 cp .env.example .env
@@ -174,6 +226,10 @@ dotnet run --project src/Rag.Cli -- config
 # Preview chunking strategies
 dotnet run --project src/Rag.Cli -- chunk:preview ./samples/handbook.pdf
 
+# Separate CLI invocations require persistent document AND vector stores.
+export DOC_STORE=mongo VECTOR_STORE=elasticsearch
+export MONGO_CONNECTION_STRING=mongodb://localhost:27017
+export ELASTICSEARCH_URI=http://localhost:9200
 # Ingest and query through the CLI
 dotnet run --project src/Rag.Cli -- ingest ./samples
 dotnet run --project src/Rag.Cli -- ingest ./samples s3://rag-docs/ azureblob://rag-docs/
@@ -195,8 +251,9 @@ dotnet run --project src/Rag.Api
 
 Swagger is enabled by default when the API runs.
 
-The API has no authentication and accepts caller-supplied paths, so run it on localhost or behind an
-authenticating gateway. Local reads are limited to `LOCAL_SOURCE_ALLOWED_ROOTS`, which defaults to
+The API supports an operator-managed `X-API-Key` and accepts caller-supplied paths. The private
+Compose deployment requires a key. This is not visitor or tenant authentication: keep it private;
+remote live exposure additionally requires authentication and authorization. Local reads are limited to `LOCAL_SOURCE_ALLOWED_ROOTS`, which defaults to
 the API's working directory. See [src/Rag.Api/README.md](src/Rag.Api/README.md) for details.
 
 ## CLI Surface
@@ -278,7 +335,7 @@ disagrees with the citations it returns, and it becomes a real measurement once 
 configured.
 
 **Abstention accuracy is misleading on its own, which is why the z columns are next to it.** The
-platform does not abstain today, so the harness scores separability instead: how far the best chunk
+legacy benchmark pipeline has no explicit abstention policy, so the harness scores separability instead: how far the best chunk
 stands out from the field, in standard deviations. `semantic` posts the best abstention accuracy and
 the worst separation (0.05) — it scores everything highly, so a fixed threshold classifies most
 answerable questions correctly while catching almost no unanswerable ones. `markdown-aware`
@@ -293,7 +350,7 @@ dotnet test
 Integration tests that use real backing services may require:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 LocalStack and Azurite are included for S3 and Azure Blob ingestion coverage. Seed examples:

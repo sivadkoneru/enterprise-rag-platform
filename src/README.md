@@ -1,7 +1,8 @@
 # Source Modules
 
-Contains the .NET projects for the enterprise RAG platform.
+Contains the Next.js Playground and .NET projects for the enterprise RAG platform.
 
+- `Rag.Playground`: browser simulation plus a server-gated private live workbench. See its README for install, quality checks, build, and browser tests.
 - `Rag.Core`: shared abstractions, models, parsers, chunking strategies, pipelines, the in-memory and
   file document stores, the Elasticsearch and in-memory vector stores, and dependency injection. Has
   no dependency on any backed provider SDK (AWS, Azure, Cosmos, or MongoDB), so a consumer that only

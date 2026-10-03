@@ -25,8 +25,8 @@
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- TODO: no LICENSE file exists in this repository yet. Add one and set
-         PackageLicenseExpression (for example MIT) before publishing to a public feed. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <!-- Symbols and source-linkable, reproducible builds. -->

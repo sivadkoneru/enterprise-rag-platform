@@ -57,7 +57,7 @@ For cloud endpoints, set provider endpoint variables and provide credentials onl
 
 `src/Rag.Playground/lib/integrations/config-catalog.json` is the catalog shared with the API build. It records option section/property bindings, environment aliases, secret redaction, validation guidance, provider applicability, and restart/reindex effects. Compose applies `.env.client` to the API container. `appsettings.Client.json` is an alternative .NET configuration file; place it beside the API's `appsettings.json` and set `ASPNETCORE_ENVIRONMENT=Client` for the API host to load it. The runtime panel makes read-only requests through same-origin `/api/client/*` routes; the browser does not receive `RAG_API_KEY` or call the API container directly. API runtime configuration is operator-managed and the catalog does not write to a running server.
 
-The API key is optional for the platform generally, but this Compose profile requires a non-empty key and uses the same value for API authentication and the server-side Playground proxy. Health checks and Swagger are public API endpoints; other API routes use `X-API-Key`. Use HTTPS and a managed secret store before exposing a deployment beyond a trusted local machine.
+The API key is optional for the platform generally, but this Compose profile requires a non-empty key and uses the same value for API authentication and the server-side Playground proxy. Health checks and Swagger are public API endpoints; other API routes use `X-API-Key`. HTTPS and a secret store alone do not authorize visitors. Keep this deployment on a trusted local machine or private network. Remote live access also requires identity authentication and authorization before the proxy and in the API; see [public demo boundaries](public-demo.md).
 
 ## Build and deployment
 
@@ -70,3 +70,20 @@ cd src/Rag.Playground
 npm ci
 npm run dev
 ```
+
+## Server-controlled mode and retention
+
+Compose sets `RAG_PLAYGROUND_MODE=private-live` and `RAG_PLAYGROUND_ORIGIN=http://localhost:3000`.
+Use that exact browser origin, including scheme and port; update the configured origin if you change
+`PLAYGROUND_PORT`. Forwarded Host headers are not trusted. Origin checks are defense in depth,
+not authentication. The proxy permits only its server-configured backend; forms generate local
+configuration templates and do not contact user-entered endpoints.
+
+Create `client-documents` before startup and mount only publishable fixture documents for recordings.
+The browser holds live query history in page memory. Evaluation jobs persist answers and evidence
+in the server job store. Named Compose volumes persist across restarts; `down --volumes` destroys them.
+Profiles isolate retrieval, not tenants. Keep one API worker process. Read the
+[operations runbook](operations.md) before changing models, cleaning indexes or restoring storage.
+
+Model calls use a default output ceiling of 1,024 tokens (`LLM_MAX_OUTPUT_TOKENS`). Provider-specific
+endpoints must support the documented chat-completions shape and output-limit parameter.
