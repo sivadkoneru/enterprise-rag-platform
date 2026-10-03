@@ -60,7 +60,7 @@ services:
       context: .
       dockerfile: src/Rag.Api/Dockerfile.client
     restart: unless-stopped
-    env_file: .env.client
+    env_file: ${RAG_CLIENT_ENV_FILE:-.env.client}
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
@@ -92,6 +92,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      RAG_PLAYGROUND_MODE: private-live
+      RAG_PLAYGROUND_ORIGIN: ${RAG_PLAYGROUND_ORIGIN:-http://localhost:3000}
       RAG_API_URL: ${RAG_API_URL:-http://api:8080}
       RAG_API_KEY: ${RAG_API_KEY:?Set RAG_API_KEY in .env.client}
     ports:

@@ -16,3 +16,5 @@ TestResults/
 *.suo
 *.log
 ingest.json
+
+test-results/

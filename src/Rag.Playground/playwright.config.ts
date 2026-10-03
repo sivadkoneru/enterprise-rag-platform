@@ -3,7 +3,7 @@ export default defineConfig({
     testDir: "./tests/browser",
     fullyParallel: false,
     retries: 0,
-    reporter: "list",
+    reporter: [["list"], ["html", { open: "never" }]],
     use: {
         actionTimeout: 10000,
         baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3100",
@@ -20,7 +20,8 @@ export default defineConfig({
         },
     ],
     webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+        command: "npm start",
+        env: { PORT: "3100", HOSTNAME: "127.0.0.1" },
         url: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3100",
         reuseExistingServer: !process.env.CI,
         timeout: 120000,

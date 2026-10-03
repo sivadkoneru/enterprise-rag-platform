@@ -1,101 +1,184 @@
 name: CI
-
-# Build and test the enterprise RAG platform on every commit to main
-# and on every pull request targeting main.
 on:
   push:
-    branches: [main]
+    branches: [main, include-ui-demo]
     tags: ['v*']
   pull_request:
-    branches: [main]
-
-# Cancel superseded runs for the same ref to save runner time.
+    branches: [main, include-ui-demo]
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
-
+  NEXT_TELEMETRY_DISABLED: "1"
 jobs:
-  build-test:
-    name: Build & Test
-    # ubuntu-latest ships Docker, which the Testcontainers-based
-    # integration tests require.
-    runs-on: ubuntu-latest
-
+  backend-unit:
+    name: Backend / Build & Unit
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET 10 SDK
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
+          global-json-file: global.json
+      - run: dotnet restore enterprise-rag-platform.sln
+      - run: dotnet build enterprise-rag-platform.sln -c Release --no-restore -warnaserror
+      - run: |
+          dotnet test enterprise-rag-platform.sln -c Release --no-build --filter "Category!=Integration" --logger trx --results-directory test-results
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'Directory.Build.props') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Restore
-        run: dotnet restore enterprise-rag-platform.sln
-
-      - name: Build
-        run: dotnet build enterprise-rag-platform.sln --configuration Release --no-restore -warnaserror
-
-      - name: Test
-        run: >-
-          dotnet test enterprise-rag-platform.sln
-          --configuration Release
-          --no-build
-          --logger "trx;LogFileName=test-results.trx"
-          --results-directory ./test-results
-
-      - name: Upload test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+          name: backend-unit-results
+          path: |
+            test-results
+            evals/results
+  backend-integration:
+    name: Backend / Integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          name: test-results
-          path: ./test-results/**/*.trx
-          if-no-files-found: ignore
-
-      # Regression floors are enforced by Rag.Evals.Tests in the step above. These steps cover the
-      # other two failure modes: the harness itself breaking, and the published tables drifting away
-      # from the numbers the code actually produces.
-      # The harness builds its configuration from an explicit dictionary and reads no environment
-      # variables, so the provider is pinned to deterministic in RunProfile.Default, not here.
-      - name: Regenerate published evaluation tables
-        run: >-
-          dotnet run --project evals/Rag.Evals/Rag.Evals.csproj
-          --configuration Release
-          --no-build
-          -- report --write
-
-      - name: Fail if published evaluation tables are stale
-        run: git diff --exit-code -- README.md evals/results
-
-      - name: Upload evaluation results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+          global-json-file: global.json
+      - run: dotnet restore enterprise-rag-platform.sln
+      - run: dotnet build enterprise-rag-platform.sln -c Release --no-restore -warnaserror
+      - run: |
+          docker info
+          dotnet test tests/Rag.Integration.Tests -c Release --no-build --logger trx --results-directory test-results
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: eval-results
-          path: evals/results/**
-          if-no-files-found: ignore
-
+          name: backend-integration-results
+          path: |
+            test-results
+            evals/results
+  deterministic:
+    name: Evaluation / Deterministic
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore enterprise-rag-platform.sln
+      - run: dotnet build enterprise-rag-platform.sln -c Release --no-restore -warnaserror
+      - run: |
+          dotnet test tests/Rag.Evals.Tests -c Release --no-build
+          dotnet run --project evals/Rag.Evals -c Release --no-build -- report --write
+          git diff --exit-code -- README.md evals/results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deterministic-results
+          path: |
+            test-results
+            evals/results
+  frontend:
+    name: Frontend / Quality & Build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/Rag.Playground
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Rag.Playground/package-lock.json
+      - run: npm ci
+      - run: npm run fixtures:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-diagnostics
+          path: |
+            src/Rag.Playground/test-results
+            src/Rag.Playground/playwright-report
+  browser:
+    name: Frontend / Browser & Visual
+    runs-on: ubuntu-24.04
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    defaults:
+      run:
+        working-directory: src/Rag.Playground
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Rag.Playground/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          VISUAL: "1"
+          RAG_PLAYGROUND_MODE: demo
+          RAG_API_URL: http://127.0.0.1:9
+          RAG_API_KEY: deliberately-configured-demo-sentinel
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-diagnostics
+          path: |
+            src/Rag.Playground/test-results
+            src/Rag.Playground/playwright-report
+  client:
+    name: Client / End-to-End
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/Rag.Playground
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Rag.Playground/package-lock.json
+      - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build enterprise-rag-platform.sln -c Release -warnaserror
+        working-directory: .
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/client-e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: client-diagnostics
+          path: |
+            src/Rag.Playground/test-results
+            src/Rag.Playground/playwright-report
+  compose:
+    name: Deployment / Compose Smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/compose-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-load-evidence
+          path: test-results/compose-load.json
   release:
     name: Build packages & release
     # Runs only after build & test succeed, and only for version tag pushes
     # (e.g. v1.2.3). Pushes to main and pull requests stop after build-test.
-    needs: build-test
+    needs: [backend-unit, backend-integration, deterministic, frontend, browser, client, compose]
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
@@ -108,7 +191,7 @@ jobs:
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Cache NuGet packages
         uses: actions/cache@v4

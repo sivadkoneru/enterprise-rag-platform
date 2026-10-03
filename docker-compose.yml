@@ -6,27 +6,27 @@ services:
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
 
   mongo:
-    image: mongo:7
+    image: mongo:8.0.32
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
 
   localstack:
-    image: localstack/localstack:3
+    image: localstack/localstack:4.3.0
     environment:
       SERVICES: s3
       AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     ports:
-      - "4566:4566"
+      - "127.0.0.1:4566:4566"
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.36.0
     command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
     ports:
-      - "10000:10000"
-      - "10001:10001"
-      - "10002:10002"
+      - "127.0.0.1:10000:10000"
+      - "127.0.0.1:10001:10001"
+      - "127.0.0.1:10002:10002"
