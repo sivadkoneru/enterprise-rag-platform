@@ -22,115 +22,14 @@ import {
     type DiagramNode,
 } from "@/features/architecture/architecture-data";
 
-const nodeWidth = 158;
-const nodeHeight = 78;
+import { connectorPath, nodeWidth, nodeHeight } from "./graph-layout";
+import { NodeDetails, ArchitectureNodeButton } from "./architecture-node";
 const groups: { id: ArchitectureGroup; label: string }[] = [
     { id: "ingestion", label: "Ingestion" },
     { id: "query", label: "Query" },
     { id: "operations", label: "Operations" },
     { id: "quality", label: "Quality" },
 ];
-
-function connectorPath(from: DiagramNode, to: DiagramNode) {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const edgeOffset = (x: number, y: number) => {
-        const scale = Math.min(
-            (nodeWidth / 2 + 2) / Math.max(Math.abs(x), 0.001),
-            (nodeHeight / 2 + 2) / Math.max(Math.abs(y), 0.001),
-        );
-        return [x * scale, y * scale] as const;
-    };
-    const [fromOffsetX, fromOffsetY] = edgeOffset(dx, dy);
-    const [toOffsetX, toOffsetY] = edgeOffset(-dx, -dy);
-    const fromX = from.x + fromOffsetX;
-    const fromY = from.y + fromOffsetY;
-    const toX = to.x + toOffsetX;
-    const toY = to.y + toOffsetY;
-    const bendX = (fromX + toX) / 2;
-    return `M ${fromX} ${fromY} C ${bendX} ${fromY}, ${bendX} ${toY}, ${toX} ${toY}`;
-}
-
-function NodeDetails({ node }: { node: DiagramNode }) {
-    const implemented = node.implementation === "Implemented backend";
-    return (
-        <div className="space-y-5 pt-5">
-            <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                    variant={implemented ? "secondary" : "outline"}
-                    className="gap-1.5"
-                >
-                    {implemented ? (
-                        <Check size={11} className="text-emerald-600" />
-                    ) : (
-                        <CircleDashed size={11} className="text-primary" />
-                    )}
-                    {node.implementation}
-                </Badge>
-                <Badge variant="outline" className="capitalize">
-                    {node.group}
-                </Badge>
-            </div>
-            <p className="text-sm leading-6">{node.responsibility}</p>
-            <div className="space-y-3 rounded-lg border bg-muted/40 p-4 text-xs leading-5">
-                <div>
-                    <div className="eyebrow mb-1">Technology</div>
-                    <div>{node.technology}</div>
-                </div>
-                <div>
-                    <div className="eyebrow mb-1">Inputs</div>
-                    <div>{node.inputs}</div>
-                </div>
-                <div>
-                    <div className="eyebrow mb-1">Outputs</div>
-                    <div>{node.outputs}</div>
-                </div>
-            </div>
-            <div>
-                <div className="eyebrow mb-2">Operational notes</div>
-                <ul className="space-y-2 text-xs leading-5 text-muted-foreground">
-                    {node.considerations.map((item) => (
-                        <li key={item} className="flex gap-2">
-                            <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" />
-                            {item}
-                        </li>
-                    ))}
-                </ul>
-            </div>
-        </div>
-    );
-}
-
-function ArchitectureNodeButton({
-    node,
-    onSelect,
-    fit = false,
-}: {
-    node: DiagramNode;
-    onSelect: (node: DiagramNode) => void;
-    fit?: boolean;
-}) {
-    const implemented = node.implementation === "Implemented backend";
-    return (
-        <button
-            type="button"
-            aria-label={`Inspect ${node.name}, ${node.implementation}`}
-            onClick={() => onSelect(node)}
-            className={`flex flex-col items-start justify-center rounded-lg border bg-card px-3 text-left shadow-sm transition hover:border-primary hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring ${implemented ? "" : "border-dashed bg-accent/25"}`}
-            style={{ width: "100%", height: fit ? "100%" : nodeHeight }}
-        >
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold leading-4">
-                <span
-                    className={`size-1.5 shrink-0 rounded-full ${implemented ? "bg-emerald-600" : "bg-primary"}`}
-                />
-                {node.name}
-            </span>
-            <span className="mt-1 text-[9px] leading-3 text-muted-foreground">
-                {node.implementation}
-            </span>
-        </button>
-    );
-}
 
 export function ArchitectureCanvas() {
     const [selected, setSelected] = useState<DiagramNode | null>(null);

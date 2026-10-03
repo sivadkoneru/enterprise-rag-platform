@@ -1,215 +1,73 @@
 "use client";
+import { DemoAnswerPanel } from "./answer-panel";
 
-import {
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-    useSyncExternalStore,
-} from "react";
-import {
-    ArrowDown,
-    ArrowRight,
-    BookOpen,
-    Check,
-    CheckCheck,
-    ChevronRight,
-    CircleAlert,
-    Copy,
-    Database,
-    FileSearch,
-    FileText,
-    History,
-    Layers3,
-    Loader2,
-    Play,
-    RotateCcw,
-    ShieldCheck,
-    Sparkles,
-    Square,
-    Terminal,
-} from "lucide-react";
-import type { CorpusId, QueryRun, TraceStage } from "@/lib/contracts";
-import { DEFAULT_CONFIG, DEFAULT_QUESTION } from "@/lib/constants";
-import { corpora, EXAMPLE_QUESTIONS } from "@/lib/demo/corpus";
-import { gateway } from "@/lib/demo/gateway";
-import {
-    historySnapshot,
-    readHistory,
-    saveHistory,
-    subscribeHistory,
-} from "@/lib/demo/history";
-import { Panel, PageFooter, PageHeading } from "@/components/shared/panel";
-import { Hint } from "@/components/shared/hint";
 import { Drawer } from "@/components/shared/drawer";
-import { Badge } from "@/components/ui/badge";
+import { PageFooter,PageHeading,Panel } from "@/components/shared/panel";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CorpusDrawer, DocumentDrawer } from "@/features/corpus/corpus-drawer";
-import { RetrievalSettings } from "./retrieval-settings";
-import { PipelineTrace } from "./pipeline-trace";
+import { CorpusDrawer,DocumentDrawer } from "@/features/corpus/corpus-drawer";
+import type { CorpusId } from "@/lib/contracts";
+import { corpora,EXAMPLE_QUESTIONS } from "@/lib/demo/corpus";
+import {
+ArrowDown,
+ArrowRight,
+BookOpen,
+CheckCheck,
+ChevronRight,
+CircleAlert,
+Database,
+History,
+Layers3,
+Play,
+RotateCcw,
+ShieldCheck,
+Square,
+Terminal
+} from "lucide-react";
 import { EvidenceList } from "./evidence-list";
+import { PipelineTrace } from "./pipeline-trace";
+import { RetrievalSettings } from "./retrieval-settings";
 
-const subscribeHydration = () => () => {};
+import { usePlayground } from "./use-playground";
 
 export function PlaygroundPage() {
-    const hydrated = useSyncExternalStore(
-        subscribeHydration,
-        () => true,
-        () => false,
-    );
-    const [corpusId, setCorpusId] = useState<CorpusId>("handbook");
-    const [question, setQuestion] = useState(DEFAULT_QUESTION);
-    const [config, setConfig] = useState({ ...DEFAULT_CONFIG });
-    const [run, setRun] = useState<QueryRun | null>(null);
-    const [stages, setStages] = useState<TraceStage[]>([]);
-    const [running, setRunning] = useState(false);
-    const [error, setError] = useState("");
-    const [notice, setNotice] = useState("");
-    const [corpusOpen, setCorpusOpen] = useState(false);
-    const [historyOpen, setHistoryOpen] = useState(false);
-    const [documentId, setDocumentId] = useState<string | null>(null);
-    const [expandedIds, setExpandedIds] = useState<string[]>([]);
-    const [highlightedId, setHighlightedId] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
-    const [simulateFailure, setSimulateFailure] = useState(false);
-    const abortRef = useRef<AbortController | null>(null);
-    const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const snapshot = useSyncExternalStore(
-        subscribeHistory,
-        historySnapshot,
-        () => "",
-    );
-    const history = useMemo(() => readHistory(snapshot), [snapshot]);
-    const corpus = corpora.find((item) => item.id === corpusId)!;
-    useEffect(
-        () => () => {
-            abortRef.current?.abort();
-            if (copyTimer.current) clearTimeout(copyTimer.current);
-        },
-        [],
-    );
-
-    async function execute() {
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setRunning(true);
-        setError("");
-        setNotice("");
-        setRun(null);
-        setCopied(false);
-        setStages([]);
-        try {
-            const result = await gateway.runQuery(
-                { corpusId, question, config: { ...config }, simulateFailure },
-                {
-                    signal: controller.signal,
-                    onEvent: (event) => {
-                        if (abortRef.current === controller)
-                            setStages(event.stages);
-                    },
-                },
-            );
-            if (controller.signal.aborted || abortRef.current !== controller)
-                return;
-            setRun(result);
-            setExpandedIds([]);
-            setHighlightedId(null);
-            if (!saveHistory(result))
-                setNotice(
-                    "This browser could not save session history. Your current result is still available.",
-                );
-        } catch (err) {
-            if (abortRef.current !== controller) return;
-            if (err instanceof DOMException && err.name === "AbortError") {
-                setNotice(
-                    "Query canceled. Adjust your settings and run again.",
-                );
-                setStages([]);
-            } else {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "The demo query could not complete. Please retry.",
-                );
-                setSimulateFailure(false);
-            }
-        } finally {
-            if (abortRef.current === controller) setRunning(false);
-        }
-    }
-    function restore(item: QueryRun) {
-        abortRef.current?.abort();
-        abortRef.current = null;
-        setRunning(false);
-        setError("");
-        setNotice("Restored a query and its settings from this session.");
-        setCorpusId(item.request.corpusId);
-        setQuestion(item.request.question);
-        setConfig({ ...item.request.config });
-        setRun(item);
-        setStages(item.trace);
-        setExpandedIds([]);
-        setHighlightedId(null);
-        setHistoryOpen(false);
-    }
-    function revealSource(number: number) {
-        const citation = run?.citations.find((item) => item.number === number);
-        if (!citation) return;
-        setExpandedIds((current) => [
-            ...new Set([...current, citation.chunkId]),
-        ]);
-        setHighlightedId(citation.chunkId);
-        requestAnimationFrame(() => {
-            const element = document.getElementById(
-                `source-${citation.chunkId}`,
-            );
-            element?.scrollIntoView({
-                behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-                    .matches
-                    ? "instant"
-                    : "smooth",
-                block: "center",
-            });
-            element?.focus({ preventScroll: true });
-        });
-    }
-    async function copyAnswer() {
-        if (!run) return;
-        const text =
-            run.answer
-                .map(
-                    (segment) =>
-                        `${segment.text}${segment.citationNumber ? ` [${segment.citationNumber}]` : ""}`,
-                )
-                .join("\n\n") +
-            "\n\n" +
-            run.citations
-                .map((citation) => {
-                    const chunk = run.context.find(
-                        (item) => item.id === citation.chunkId,
-                    )!;
-                    return `[${citation.number}] ${chunk.filename} — ${chunk.section} (chunk ${chunk.index})`;
-                })
-                .join("\n");
-        try {
-            await navigator.clipboard.writeText(text);
-            setCopied(true);
-            if (copyTimer.current) clearTimeout(copyTimer.current);
-            copyTimer.current = setTimeout(() => setCopied(false), 2000);
-        } catch {
-            setNotice(
-                "Clipboard access is unavailable. Select the answer text to copy it.",
-            );
-        }
-    }
-    const evidence = run
-        ? [
-              ...run.candidates,
-              ...run.context.filter((chunk) => chunk.isNeighbor),
-          ]
-        : [];
+    const {
+        hydrated,
+        corpusId,
+        setCorpusId,
+        question,
+        setQuestion,
+        config,
+        setConfig,
+        run,
+        setRun,
+        stages,
+        setStages,
+        running,
+        error,
+        setError,
+        notice,
+        setNotice,
+        corpusOpen,
+        setCorpusOpen,
+        historyOpen,
+        setHistoryOpen,
+        documentId,
+        setDocumentId,
+        expandedIds,
+        setExpandedIds,
+        highlightedId,
+        copied,
+        simulateFailure,
+        setSimulateFailure,
+        abortRef,
+        history,
+        corpus,
+        execute,
+        restore,
+        revealSource,
+        copyAnswer,
+        evidence,
+    } = usePlayground();
     return (
         <>
             <PageHeading
@@ -468,168 +326,7 @@ export function PlaygroundPage() {
                             {notice}
                         </p>
                     )}
-                    <Panel
-                        title="Grounded Answer"
-                        icon={<Sparkles size={15} className="text-primary" />}
-                        action={
-                            <Badge
-                                variant="outline"
-                                className="gap-1.5 rounded text-[9px] font-normal"
-                            >
-                                {run ? (
-                                    <>
-                                        <CheckCheck size={11} />
-                                        Evidence linked
-                                    </>
-                                ) : (
-                                    <>
-                                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                        Demo Mode
-                                    </>
-                                )}
-                            </Badge>
-                        }
-                        bodyClassName={run ? "!p-0" : ""}
-                    >
-                        {running ? (
-                            <div
-                                role="status"
-                                aria-label="Generating grounded answer"
-                                className="space-y-3 py-8"
-                            >
-                                <div className="mb-6 flex items-center gap-2 text-xs text-primary">
-                                    <Loader2
-                                        size={15}
-                                        className="animate-spin"
-                                    />
-                                    Retrieving and validating evidence…
-                                </div>
-                                <Skeleton className="h-3 w-full" />
-                                <Skeleton className="h-3 w-[92%]" />
-                                <Skeleton className="h-3 w-[96%]" />
-                                <Skeleton className="h-3 w-[70%]" />
-                            </div>
-                        ) : run ? (
-                            <>
-                                <div className="p-5">
-                                    <div className="mb-4 flex items-center gap-2 text-[10px] text-muted-foreground">
-                                        <span className="status-dot" />
-                                        {run.abstained
-                                            ? "Abstained · insufficient evidence"
-                                            : "Answer grounded in selected context"}
-                                        <span className="mono ml-auto text-[9px]">
-                                            {run.id.slice(0, 8)}
-                                        </span>
-                                    </div>
-                                    <div className="space-y-3 text-[13px] leading-[2]">
-                                        {run.answer.map((segment, index) => (
-                                            <p key={index}>
-                                                {segment.text}
-                                                {segment.citationNumber && (
-                                                    <button
-                                                        className="mx-1 inline-flex h-5 min-w-5 items-center justify-center rounded bg-accent px-1 font-mono text-[10px] font-semibold text-primary hover:ring-1 hover:ring-primary"
-                                                        onClick={() =>
-                                                            revealSource(
-                                                                segment.citationNumber!,
-                                                            )
-                                                        }
-                                                        aria-label={`Citation ${segment.citationNumber}: show source`}
-                                                    >
-                                                        {segment.citationNumber}
-                                                    </button>
-                                                )}
-                                            </p>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/25 px-5 py-3">
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-muted-foreground">
-                                        <span className="flex items-center gap-1.5">
-                                            <ShieldCheck
-                                                size={12}
-                                                className="text-[var(--success)]"
-                                            />
-                                            Confidence:{" "}
-                                            <strong className="font-medium text-foreground">
-                                                {run.confidence}
-                                            </strong>
-                                            <Hint text={run.confidenceReason} />
-                                        </span>
-                                        <span>
-                                            Citations:{" "}
-                                            <span className="mono text-foreground">
-                                                {run.citations.length}
-                                            </span>
-                                        </span>
-                                        <span>
-                                            Context:{" "}
-                                            <span className="mono text-foreground">
-                                                {run.context.length} chunks
-                                            </span>
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            Tokens:{" "}
-                                            <span className="mono text-foreground">
-                                                {run.contextTokens +
-                                                    run.outputTokens}
-                                            </span>
-                                            <Hint
-                                                text={`Estimated from characters ÷ 4. Context: ${run.contextTokens}; output: ${run.outputTokens}.`}
-                                            />
-                                        </span>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 px-0 text-[10px]"
-                                        onClick={() => void copyAnswer()}
-                                    >
-                                        {copied ? (
-                                            <Check size={11} />
-                                        ) : (
-                                            <Copy size={11} />
-                                        )}
-                                        {copied ? "Copied" : "Copy answer"}
-                                    </Button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
-                                <div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/15 bg-accent/60">
-                                    <FileSearch
-                                        size={26}
-                                        strokeWidth={1.3}
-                                        className="text-primary"
-                                    />
-                                    <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-card bg-[var(--success-bg)] text-[var(--success)]">
-                                        <Check size={10} />
-                                    </span>
-                                </div>
-                                <h3 className="text-[15px] font-semibold tracking-tight">
-                                    Answers start with evidence.
-                                </h3>
-                                <p className="mt-2 max-w-[310px] text-xs leading-6 text-muted-foreground">
-                                    Run a query to see a grounded answer,
-                                    inspect its sources, and follow the pipeline
-                                    from retrieval to response.
-                                </p>
-                                <div className="mt-6 flex flex-wrap justify-center gap-4 text-[10px] text-muted-foreground">
-                                    <span className="flex items-center gap-1.5">
-                                        <FileText size={12} />
-                                        Linked citations
-                                    </span>
-                                    <span className="flex items-center gap-1.5">
-                                        <Layers3 size={12} />
-                                        Ranked context
-                                    </span>
-                                    <span className="flex items-center gap-1.5">
-                                        <ShieldCheck size={12} />
-                                        Evidence validation
-                                    </span>
-                                </div>
-                            </div>
-                        )}
-                    </Panel>
+                    <DemoAnswerPanel run={run} running={running} copied={copied} revealSource={revealSource} copyAnswer={copyAnswer} />
                     {run ? (
                         <section>
                             <div className="mb-3 flex items-center justify-between">

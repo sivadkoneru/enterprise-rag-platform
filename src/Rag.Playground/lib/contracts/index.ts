@@ -109,8 +109,8 @@ export interface QueryRun {
     totalLatencyMs: number;
     contextTokens: number;
     outputTokens: number;
-    confidence: "High" | "Partial" | "Insufficient";
-    confidenceReason: string;
+    evidenceStatements: number;
+    evidenceReason: string;
     abstained: boolean;
     provenance: DataOrigin;
 }

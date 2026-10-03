@@ -17,7 +17,7 @@ export function ClientDocuments({ profileId, documentId, onClose }: { profileId:
     const [error, setError] = useState("");
     useEffect(() => {
         const controller = new AbortController();
-        (documentId ? liveGateway.getDocument(profileId, documentId, controller.signal).then(setSelected) : liveGateway.listDocuments(profileId, offset, controller.signal).then(setPage))
+        (documentId ? liveGateway.getDocument(profileId, documentId, controller.signal).then(item => { if (!controller.signal.aborted) setSelected(item); }) : liveGateway.listDocuments(profileId, offset, controller.signal).then(item => { if (!controller.signal.aborted) setPage(item); }))
             .catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Document unavailable."); });
         return () => controller.abort();
     }, [profileId, documentId, offset]);

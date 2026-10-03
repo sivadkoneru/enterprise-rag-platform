@@ -1,4 +1,5 @@
 "use client";
+import { version } from "@/package.json";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -44,7 +45,7 @@ const navigation = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const { mode, setMode } = useEnvironment();
+    const { mode, setMode, allowClient } = useEnvironment();
     const { resolvedTheme, setTheme } = useTheme();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [aboutOpen, setAboutOpen] = useState(false);
@@ -157,7 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <span className="status-dot" />
                         {mode === "demo" ? "Demo Mode" : "Client Environment"}
                     </span>
-                    <span className="mono">v1.0</span>
+                    <span className="mono">v{version}</span>
                 </div>
             </div>
         </>
@@ -204,8 +205,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="hidden items-center gap-4 text-[10px] text-muted-foreground xl:flex">
                             {(mode === "demo" ? [
                                 "Demo Corpus",
-                                "Elasticsearch",
-                                "Embeddings Ready",
+                                "Search simulation",
+                                "Embeddings simulated",
                             ] : ["Client data", "Live API"]).map((label) => (
                                 <Tooltip key={label}>
                                     <TooltipTrigger asChild>
@@ -229,7 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         </Badge>
                         <select aria-label="Environment mode" className="field !w-auto !max-w-[150px] !py-1.5 !text-[10px]" value={mode} onChange={e => setMode(e.target.value === "client" ? "client" : "demo")}>
                             <option value="demo">Demo</option>
-                            <option value="client">Client Environment</option>
+                            {allowClient && <option value="client">Private Client Environment</option>}
                         </select>
                         <div className="h-5 border-l" />
                         <Button
@@ -249,6 +250,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                 </header>
                 <main id="main-content" className="page-content">
+                    {mode === "demo" && <p className="mb-5 rounded-lg border border-primary/20 bg-accent/30 px-4 py-2 text-xs text-muted-foreground"><strong className="text-primary">Demo simulation.</strong> Interactive simulation using prepared documents. No external model or search calls.</p>}
                     {children}
                 </main>
             </div>

@@ -42,6 +42,13 @@ describe("live gateway", () => {
         await expect(new LiveRagGateway().runQuery(request, { signal: controller.signal, onStage: vi.fn() })).rejects.toMatchObject({ name: "AbortError" });
         expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
     });
+    it("preserves optional provenance while rejecting fabricated usage and malformed candidate scores", () => {
+        const withProvenance = { ...run, provider: "http", chatModel: "model-v1", embeddingTokens: 10, traceId: "trace" };
+        expect(parseRun(withProvenance)).toEqual(withProvenance);
+        expect(() => parseRun({ ...run, embeddingTokens: -1 })).toThrow("usage");
+        expect(() => parseRun({ ...run, chatModel: {} })).toThrow("provenance");
+        expect(() => parseRun({ ...run, candidates: [{ id: "x", documentId: "doc", filename: "policy.md", content: "text", vectorScore: .5, lexicalScore: "high" }] })).toThrow("score");
+    });
 });
 describe("client evaluation dataset", () => {
     const question = { id: "case1", question: "Refund window?", expectedSourceFile: "policy.md", goldAnchors: [{ phrase: "30 days" }] };

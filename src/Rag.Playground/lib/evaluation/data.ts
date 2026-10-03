@@ -49,7 +49,7 @@ export const METRICS = [
     },
     {
         key: "groundedness",
-        label: "Groundedness",
+        label: "Lexical overlap diagnostic",
         definition:
             "Supported-token fraction. Always 1.000 here because the deterministic client copies a sentence from context; this is a regression tripwire, not evidence of live model quality.",
     },
@@ -57,7 +57,7 @@ export const METRICS = [
         key: "abstentionAccuracy",
         label: "Abstention accuracy",
         definition:
-            "Harness classification at support z ≥ 2.5. The product does not abstain today. Read alongside false-support rate; this is not measured product answer behavior.",
+            "Harness classification at support z ≥ 2.5. The legacy benchmark pipeline has no explicit abstention policy. Read alongside false-support rate; this is not measured product answer behavior.",
     },
 ] satisfies {
     key: keyof StrategyBenchmark;
@@ -73,7 +73,7 @@ export function caseStatus(
     answerable: boolean,
 ): string {
     if (!answerable)
-        return outcome.supported ? "False support" : "Abstained correctly";
+        return outcome.supported ? "False support" : "Harness rejected unsupported case";
     if (outcome.recallAt5 === 0) return "Retrieval miss";
     if (!outcome.topCitationCorrect) return "Citation mismatch";
     return outcome.fullyCovered ? "Pass" : "Partial coverage";

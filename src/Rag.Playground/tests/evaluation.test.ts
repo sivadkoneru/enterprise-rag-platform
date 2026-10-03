@@ -83,7 +83,7 @@ describe("published evaluation dataset", () => {
         expect(
             METRICS.find((metric) => metric.key === "abstentionAccuracy")
                 ?.definition,
-        ).toContain("product does not abstain");
+        ).toContain("legacy benchmark pipeline");
     });
 });
 
@@ -133,7 +133,7 @@ describe("case result semantics", () => {
 
     it("scores unanswerable cases using the harness support decision", () => {
         expect(caseStatus(outcome({ supported: false }), false)).toBe(
-            "Abstained correctly",
+            "Harness rejected unsupported case",
         );
         expect(caseStatus(outcome({ supported: true }), false)).toBe(
             "False support",

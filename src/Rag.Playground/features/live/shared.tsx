@@ -27,5 +27,5 @@ export function NoClientData() {
     return <Panel><div className="py-10 text-center"><Database className="mx-auto mb-4 text-primary" size={28} /><h2 className="text-sm font-semibold">Bring your evidence into the workspace</h2><p className="mx-auto my-3 max-w-md text-xs leading-6 text-muted-foreground">Create a corpus and indexing profile, then ingest your local files or cloud sources. Your actual documents will appear here.</p><Button asChild size="sm"><Link href="/integrations">Configure and ingest data</Link></Button></div></Panel>;
 }
 export function ClientFooter() {
-    return <footer className="page-footer"><span>Client Environment · Results from your configured services</span><span>Client answer content stays in memory unless exported</span></footer>;
+    return <footer className="page-footer"><span>Client Environment · Results from your configured services</span><span>Query history stays in browser memory; evaluation reports persist on the server</span></footer>;
 }

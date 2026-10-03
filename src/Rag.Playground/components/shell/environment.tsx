@@ -2,7 +2,7 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 
 type Mode = "demo" | "client";
-const EnvironmentContext = createContext<{ mode: Mode; setMode: (mode: Mode) => void }>({ mode: "demo", setMode: () => {} });
+const EnvironmentContext = createContext<{ mode: Mode; allowClient: boolean; setMode: (mode: Mode) => void }>({ mode: "demo", allowClient: false, setMode: () => {} });
 
 let fallbackMode: Mode = "demo";
 const key = "rag-environment-mode";
@@ -20,8 +20,8 @@ function setMode(mode: Mode) {
     window.dispatchEvent(new Event("rag-mode-change"));
 }
 /** Only the mode preference is persisted; client answers and credentials are never stored. */
-export function EnvironmentProvider({ children }: { children: React.ReactNode }) {
+export function EnvironmentProvider({ children, allowClient }: { children: React.ReactNode; allowClient: boolean }) {
     const mode = useSyncExternalStore<Mode>(subscribe, snapshot, () => "demo");
-    return <EnvironmentContext.Provider value={{ mode, setMode }}>{children}</EnvironmentContext.Provider>;
+    return <EnvironmentContext.Provider value={{ mode: allowClient ? mode : "demo", allowClient, setMode: next => setMode(allowClient ? next : "demo") }}>{children}</EnvironmentContext.Provider>;
 }
 export const useEnvironment = () => useContext(EnvironmentContext);

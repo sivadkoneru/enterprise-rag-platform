@@ -63,12 +63,12 @@ export function PipelineTrace({
         >
             <div className="mb-4 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground">
-                    Every stage. Every millisecond.
+                    Stage events, not model-token streaming.
                 </p>
                 <span className="mono text-[11px]">
                     {complete ? `${total} ms` : "—"}
                     <span className="ml-1.5 font-sans text-[10px] text-muted-foreground">
-                        {simulated ? "simulated" : "measured stages"}
+                        {simulated ? "scripted duration" : "measured stages"}
                     </span>
                 </span>
             </div>

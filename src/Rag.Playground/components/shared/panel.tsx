@@ -1,3 +1,4 @@
+import { version } from "@/package.json";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -62,11 +63,11 @@ export function PageFooter() {
         <footer className="page-footer">
             <span className="flex items-center gap-2">
                 <span className="status-dot" />
-                All systems simulated · No external API calls
+                Interactive simulation using prepared documents. No external model or search calls.
             </span>
             <span>
                 Built to make retrieval explainable.{" "}
-                <span className="mono ml-2">v1.0.0</span>
+                <span className="mono ml-2">v{version}</span>
             </span>
         </footer>
     );

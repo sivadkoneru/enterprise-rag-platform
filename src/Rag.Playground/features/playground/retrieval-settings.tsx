@@ -44,7 +44,7 @@ export function RetrievalSettings({
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="field-label" htmlFor="strategy">
-                            Chunking strategy
+                            Illustrative chunking strategy
                         </label>
                         <select
                             id="strategy"

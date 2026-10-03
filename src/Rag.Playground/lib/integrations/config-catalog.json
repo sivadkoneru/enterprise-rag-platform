@@ -421,6 +421,23 @@
           "appliesTo": "API-side model provider",
           "changeEffect": "restart",
           "validation": "Must be a finite number; confirm any provider-specific limits."
+        },
+        {
+          "id": "max-output-tokens",
+          "key": "Llm:MaxOutputTokens",
+          "section": "Llm",
+          "option": "MaxOutputTokens",
+          "environmentAliases": [
+            "LLM_MAX_OUTPUT_TOKENS"
+          ],
+          "type": "number",
+          "defaultValue": 1024,
+          "placeholder": "1024",
+          "secret": false,
+          "help": "Maximum generated output tokens per chat request. Sent as max_tokens.",
+          "appliesTo": "API-side model provider",
+          "changeEffect": "restart",
+          "validation": "Integer between 1 and 8192."
         }
       ]
     },

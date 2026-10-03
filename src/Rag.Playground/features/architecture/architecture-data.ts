@@ -263,7 +263,7 @@ export const architectureNodes: DiagramNode[] = [
         inputs: "Chat completion text and citations derived from retrieved matches.",
         outputs: "JSON answer text and citation list.",
         considerations: [
-            "The API response has no confidence score or pipeline trace.",
+            "Legacy /query returns answers and citations; /api/v1/queries streams measured stage events without a confidence probability.",
             "The Playground's richer response display is produced from local fixtures.",
         ],
         implementation: "Implemented backend",
@@ -297,7 +297,7 @@ export const architectureNodes: DiagramNode[] = [
         technology:
             "Rag.Evals deterministic scorers, generated reports, and regression-floor tests.",
         inputs: "Golden questions, expected evidence, and retrieval outcomes.",
-        outputs: "Recall, MRR, citation, groundedness, and abstention metrics.",
+        outputs: "Recall, MRR, source-reference diagnostics, lexical overlap, and harness abstention metrics.",
         considerations: [
             "The harness is separate from the query response path.",
             "Published scores use the deterministic provider and do not measure production answer quality.",

@@ -1,3 +1,4 @@
+import { validateResponse } from "./validate-response";
 export async function clientRequest<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`/api/client/${path}`, {
         ...init,
@@ -11,7 +12,9 @@ export async function clientRequest<T>(path: string, init?: RequestInit): Promis
                 ? data.message : `Request failed (${response.status}). Check Integrations & Setup.`;
         throw new Error(message);
     }
-    return response.json() as Promise<T>;
+    const value: unknown = await response.json();
+    validateResponse(path, value, init?.method);
+    return value as T;
 }
 
 export function downloadJson(filename: string, value: unknown) {

@@ -111,11 +111,11 @@ export function EvidenceList({
                                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] sm:grid-cols-4">
                                     {[
                                         [
-                                            "Vector score",
+                                            "Illustrative retrieval score",
                                             chunk.vectorScore.toFixed(2),
                                         ],
                                         [
-                                            "Reranker",
+                                            "Illustrative reranker score",
                                             chunk.rerankerScore?.toFixed(2) ??
                                                 "Disabled",
                                         ],

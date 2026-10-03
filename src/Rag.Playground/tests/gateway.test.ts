@@ -97,7 +97,7 @@ describe("default grounded query", () => {
         expect(new Set(run.answer.map((segment) => segment.text)).size).toBe(3);
         expect(run.abstained).toBe(false);
         expect(run.provenance).toBe("demo-fixture");
-        expect(run.confidence).toBe("High");
+        expect(run.evidenceStatements).toBe(3);
     });
 
     it("grounds each exact answer sentence in an admitted chunk with a resolvable citation", () => {
@@ -266,7 +266,7 @@ describe("retrieval controls", () => {
         expect(run.context).toHaveLength(0);
         expect(run.citations).toHaveLength(0);
         expect(run.abstained).toBe(true);
-        expect(run.confidence).toBe("Insufficient");
+        expect(run.evidenceStatements).toBe(0);
         expect(
             run.candidates.every(
                 (chunk) => chunk.exclusionReason === "No supported topic match",

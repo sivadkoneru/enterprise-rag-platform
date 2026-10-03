@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/shell/providers";
 import { AppShell } from "@/components/shell/app-shell";
 import "./globals.css";
+import { privateLiveEnabled } from "@/lib/live/deployment";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
     title: { default: "Playground · RAG Lab", template: "%s · RAG Lab" },
@@ -14,7 +17,7 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <body>
-                <Providers>
+                <Providers allowClient={privateLiveEnabled()}>
                     <AppShell>{children}</AppShell>
                 </Providers>
             </body>

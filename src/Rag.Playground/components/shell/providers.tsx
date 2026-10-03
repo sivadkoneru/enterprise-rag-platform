@@ -1,7 +1,7 @@
 "use client";
 import { ThemeProvider } from "next-themes";
 import { EnvironmentProvider } from "./environment";
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children, allowClient }: { children: React.ReactNode; allowClient: boolean }) {
     return (
         <ThemeProvider
             attribute="class"
@@ -9,7 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             enableSystem
             disableTransitionOnChange
         >
-            <EnvironmentProvider>{children}</EnvironmentProvider>
+            <EnvironmentProvider allowClient={allowClient}>{children}</EnvironmentProvider>
         </ThemeProvider>
     );
 }

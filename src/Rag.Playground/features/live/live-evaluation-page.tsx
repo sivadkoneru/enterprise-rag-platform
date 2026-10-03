@@ -1,91 +1,635 @@
 "use client";
-import { useState } from "react";
-import { Download, FileJson, FlaskConical, Search, Upload } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Panel, PageHeading } from "@/components/shared/panel";
+import { EvaluationCharts } from "./evaluation-charts";
 import { Drawer } from "@/components/shared/drawer";
 import { Hint } from "@/components/shared/hint";
-import { ChartFrame } from "@/components/charts/chart-frame";
-import type { ClientJob, EvaluationRun, LiveEvaluationMetrics } from "@/lib/live/contracts";
-import { liveGateway } from "@/lib/live/gateway";
+import { PageHeading, Panel } from "@/components/shared/panel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { evaluationTemplate } from "@/lib/live/evaluation";
 import { downloadJson } from "@/lib/live/http";
-import { evaluationTemplate, parseEvaluationQuestions } from "@/lib/live/evaluation";
-import { useClientData } from "./use-client-data";
-import { ClientError, ClientFooter, NoClientData } from "./shared";
-import { QueryControls, initialQuerySettings } from "./query-controls";
-import { RecentJobs } from "./recent-jobs";
+import { Download, FileJson, FlaskConical, Search, Upload } from "lucide-react";
+import { ClientDocuments } from "./client-documents";
 import { JobProgress } from "./job-progress";
 import { LiveEvidence } from "./live-evidence";
-import { ClientDocuments } from "./client-documents";
+import { QueryControls } from "./query-controls";
+import { RecentJobs } from "./recent-jobs";
+import { ClientError, ClientFooter, NoClientData } from "./shared";
+import { useLiveEvaluation } from "./use-live-evaluation";
 
-const metricDefinitions: { key: keyof LiveEvaluationMetrics; label: string; definition: string }[] = [
-    { key: "recallAt1", label: "Recall@1", definition: "Share of expected evidence anchors covered by the first retrieved chunk." },
-    { key: "recallAt5", label: "Recall@5", definition: "Share of expected evidence anchors covered by the first five retrieved chunks." },
-    { key: "mrrAt5", label: "MRR@5", definition: "Mean reciprocal rank of the first relevant result, truncated at five." },
-    { key: "citationAccuracy", label: "Citation Accuracy", definition: "Whether the first generated citation points to expected evidence; aggregated across labeled answerable cases." },
-    { key: "citationPrecision", label: "Citation Precision", definition: "Share of emitted citations whose admitted source contains expected evidence." },
-    { key: "groundedness", label: "Lexical Groundedness", definition: "Fraction of answer word occurrences also present in admitted context. A lexical proxy, not an entailment or factuality judgment." },
-    { key: "abstentionAccuracy", label: "Abstention Accuracy", definition: "Agreement between actual abstention and the dataset’s expected abstention labels." },
-];
-const percentage = (value: number | null | undefined) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
-type Outcome = EvaluationRun["profiles"][number]["outcomes"][number];
+import { metricDefinitions, percentage } from "./evaluation-metrics";
 
 export function LiveEvaluationPage() {
-    const data = useClientData();
-    const [customSettings, setSettings] = useState<typeof initialQuerySettings | null>(null);
-    const settings = customSettings ?? data.capabilities?.defaultQuery ?? initialQuerySettings;
-    const [difficulty, setDifficulty] = useState("all");
-    const [dataset, setDataset] = useState("");
-    const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
-    const [job, setJob] = useState<ClientJob | null>(null);
-    const [report, setReport] = useState<EvaluationRun | null>(null);
-    const [reports, setReports] = useState<EvaluationRun[]>([]);
-    const [activeProfile, setActiveProfile] = useState("");
-    const [error, setError] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [search, setSearch] = useState("");
-    const [resultFilter, setResultFilter] = useState("all");
-    const [selected, setSelected] = useState<Outcome | null>(null);
-    const [expanded, setExpanded] = useState<string[]>([]);
-    const [document, setDocument] = useState<{ profile: string; id: string } | null>(null);
-    const [resource, setResource] = useState<"embeddingOperations" | "averageContextTokens">("embeddingOperations");
-    const [page, setPage] = useState(0);
-    const resultProfile = report?.profiles.find(p => p.profileId === activeProfile) ?? report?.profiles[0];
-    const eligibleIds = selectedProfiles.filter(id => data.profiles.some(p => p.id === id));
-    async function run() {
-        setBusy(true); setError("");
-        try { const questions = parseEvaluationQuestions(dataset); setJob(await liveGateway.evaluate({ questions, profileIds: eligibleIds, ...settings, topK: 5, reranker: settings.reranker && !!data.capabilities?.reranker })); setReport(null); }
-        catch (err) { setError(err instanceof Error ? err.message : "Evaluation could not start."); }
-        finally { setBusy(false); }
-    }
-    async function completed(next: ClientJob) {
-        if (!["complete", "completed"].includes(next.status)) return;
-        try { const result = await liveGateway.getEvaluation(next.id); setReport(result); setReports(current => [result, ...current.filter(r => r.id !== result.id)]); setActiveProfile(result.profiles[0]?.profileId ?? ""); }
-        catch (err) { setError(err instanceof Error ? err.message : "Evaluation report unavailable."); }
-    }
-    async function importFile(file?: File) {
-        if (!file) return;
-        if (file.size > 2_000_000) { setError("Evaluation files must be smaller than 2 MB."); return; }
-        try { const text = await file.text(); parseEvaluationQuestions(text); setDataset(text); setError(""); }
-        catch (err) { setError(err instanceof Error ? err.message : "Invalid evaluation file."); }
-    }
-    function status(outcome: Outcome) { return outcome.expectedAbstention ? outcome.run.abstained ? "Abstained correctly" : "Unexpected answer" : outcome.metrics.recallAt5 !== null && outcome.metrics.recallAt5 < 1 ? "Retrieval miss" : outcome.metrics.citationAccuracy === 0 ? "Citation mismatch" : "Pass"; }
-    const cases = (resultProfile?.outcomes ?? []).filter(item => item.question.toLowerCase().includes(search.toLowerCase()) && (difficulty === "all" || report?.questions?.find(q => q.id === item.questionId)?.difficulty === difficulty) && (resultFilter === "all" || status(item) === resultFilter));
-    const chartData = report?.profiles.map(p => ({ ...p, recall: p.metrics.recallAt5 == null ? null : p.metrics.recallAt5 * 100 })) ?? [];
-    return <><PageHeading eyebrow="CLIENT EVALUATION" title="Evaluate your RAG workflow" description="Measure retrieval and citation behavior against evidence labels from your own corpus." action={<Button size="sm" variant="outline" onClick={() => downloadJson("evaluation-template.json", evaluationTemplate)}><Download size={13} />Dataset template</Button>} />
-        {(error || data.error) && <ClientError message={error || data.error} retry={data.refresh} />}
-        {!data.loading && !data.error && !data.corpora.length ? <NoClientData /> : <div className="mb-6 grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <Panel title="Experiment profiles" icon={<FlaskConical size={14} />}><label className="block"><span className="field-label">Corpus</span><select className="field" value={data.corpusId} onChange={e => data.setCorpusId(e.target.value)}><option value="" disabled>Select a corpus</option>{data.corpora.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label><p className="my-4 text-[11px] leading-6 text-muted-foreground">Select indexed profiles from the same corpus. Each run uses the same questions and Top K 5 for comparable retrieval metrics.</p><div className="space-y-3">{data.profiles.map(p => <label key={p.id} className="flex items-start gap-3 rounded-md border p-3 text-xs"><input className="mt-0.5 accent-primary" type="checkbox" disabled={!p.chunkCount} checked={eligibleIds.includes(p.id)} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, p.id] : current.filter(id => id !== p.id))} /><span><strong className="font-medium">{p.name}</strong><span className="mt-1 block text-[10px] text-muted-foreground">{p.strategy} · {p.chunkCount} chunks</span></span></label>)}</div><details className="mt-4 border-t pt-4"><summary className="mb-4 text-xs font-medium">Evaluation retrieval settings</summary><QueryControls fixedTopK settings={settings} onChange={next => setSettings({ ...next, topK: 5 })} capabilities={data.capabilities} disabled={busy} /><p className="mt-2 text-[10px] text-muted-foreground">Top K is fixed at 5 for these evaluation metrics.</p></details></Panel>
-            <Panel title="Evaluation questions" icon={<FileJson size={14} />} action={<label className="cursor-pointer text-xs text-primary"><span className="flex items-center gap-1"><Upload size={12} />Import JSON</span><input type="file" accept=".json,application/json" className="sr-only" onChange={e => void importFile(e.target.files?.[0])} /></label>}><label className="block"><span className="sr-only">Evaluation dataset JSON</span><textarea className="field mono min-h-48 !text-[11px] !leading-5" value={dataset} onChange={e => setDataset(e.target.value)} placeholder={'{"questions": [{"id": "case-1", "question": "…", "expectedSourceFile": "policy.md", "goldAnchors": [{"phrase": "verbatim evidence"}]}]}'} /></label><p className="mt-3 text-[11px] leading-6 text-muted-foreground">Use exact source filenames and verbatim evidence phrases. Missing or ambiguous anchors are rejected before execution. Model calls use your configured endpoint.</p><Button className="mt-4" size="sm" disabled={busy || !eligibleIds.length || !dataset.trim() || (!!job && ["queued", "running", "paused"].includes(job.status))} onClick={() => void run()}><FlaskConical size={12} />Run evaluation</Button>{job && <div className="mt-4"><JobProgress key={job.id} initial={job} onComplete={next => { setJob(next); void completed(next); }} /></div>}<RecentJobs kind="evaluation" onSelect={next => { setJob(next); void completed(next); }} /></Panel>
-        </div>}
-        {report && resultProfile && <><div className="mb-4 flex flex-wrap items-center gap-3"><Badge variant="outline">Client results · {report.status}</Badge><select aria-label="Evaluation run" className="field !w-auto" value={report.id} onChange={e => { const item = reports.find(r => r.id === e.target.value); if (item) { setReport(item); setActiveProfile(item.profiles[0]?.profileId ?? ""); setPage(0); } }}>{reports.map(r => <option key={r.id} value={r.id}>Run {r.id.slice(0, 8)}</option>)}</select><select aria-label="Result profile" className="field !w-auto" value={resultProfile.profileId} onChange={e => { setActiveProfile(e.target.value); setPage(0); }}>{report.profiles.map(p => <option key={p.profileId} value={p.profileId}>{p.profileName}</option>)}</select><Button size="sm" variant="outline" className="ml-auto" onClick={() => downloadJson(`evaluation-${report.id}.json`, report)}><Download size={12} />Export results</Button></div>
-            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">{metricDefinitions.map(metric => <Panel key={metric.key} bodyClassName="!p-4"><div className="flex items-center justify-between gap-1 text-[10px] text-muted-foreground">{metric.label}<Hint text={metric.definition} /></div><p className="mono mt-3 text-xl font-semibold">{percentage(resultProfile.metrics[metric.key])}</p></Panel>)}</div><p className="mb-5 text-[11px] leading-6 text-muted-foreground">{resultProfile.outcomes.length} labeled cases · Unavailable metrics display —. Groundedness is a lexical overlap proxy. These results are independent of the published deterministic benchmark.</p>
-            <Panel title="Profile comparison" bodyClassName="overflow-x-auto"><table className="data-table w-full"><thead><tr>{["Profile", "Recall@5", "Embedding operations", "Average context tokens", "Average latency"].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{report.profiles.map(p => <tr key={p.profileId}><th>{p.profileName}</th><td>{percentage(p.metrics.recallAt5)}</td><td>{p.embeddingOperations}</td><td>{p.averageContextTokens.toFixed(1)}</td><td>{p.averageLatencyMs.toFixed(1)} ms</td></tr>)}</tbody></table></Panel>
-            <div className="my-5 grid gap-5 xl:grid-cols-2"><Panel><ChartFrame title="Recall by indexing profile" columns={["Profile", "Recall@5"]} rows={chartData.map(p => [p.profileName, percentage(p.metrics.recallAt5)])}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ left: -20, right: 10 }}><CartesianGrid vertical={false} stroke="var(--border)" /><XAxis dataKey="profileName" tick={{ fontSize: 10 }} /><YAxis domain={[0, 100]} tick={{ fontSize: 10 }} /><Tooltip contentStyle={{ background: "var(--card)", fontSize: 11 }} /><Bar dataKey="recall" name="Recall@5 (%)" fill="#6863d9" maxBarSize={50} isAnimationActive={false} /></BarChart></ResponsiveContainer></ChartFrame></Panel><Panel><label className="mb-3 block"><span className="sr-only">Quality resource axis</span><select className="field !w-auto" value={resource} onChange={e => setResource(e.target.value === "averageContextTokens" ? "averageContextTokens" : "embeddingOperations")}><option value="embeddingOperations">Recall vs embedding operations</option><option value="averageContextTokens">Recall vs context tokens</option></select></label><ChartFrame title="Quality vs resources" description="Measured operations and estimated context tokens. No pricing assumptions." columns={["Profile", resource, "Recall@5"]} rows={chartData.map(p => [p.profileName, p[resource], percentage(p.metrics.recallAt5)])} height={190}><ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ left: -20, right: 15 }}><CartesianGrid stroke="var(--border)" /><XAxis type="number" dataKey={resource} name={resource} padding={{ left: 8, right: 8 }} tick={{ fontSize: 10 }} /><YAxis type="number" dataKey="recall" name="Recall@5 (%)" domain={[0, 100]} padding={{ top: 8, bottom: 8 }} tick={{ fontSize: 10 }} /><Tooltip contentStyle={{ background: "var(--card)", fontSize: 11 }} /><Scatter data={chartData.filter(p => p.recall !== null)} fill="#6863d9" isAnimationActive={false} /></ScatterChart></ResponsiveContainer></ChartFrame></Panel></div>
-            <Panel title="Evaluation cases"><div className="mb-4 flex flex-wrap gap-3"><label className="relative min-w-52 flex-1"><Search size={13} className="absolute left-3 top-3 text-muted-foreground" /><input className="field !pl-9" aria-label="Search client evaluation cases" placeholder="Search questions…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} /></label><select aria-label="Difficulty filter" className="field !w-auto" value={difficulty} onChange={e => { setDifficulty(e.target.value); setPage(0); }}><option value="all">All difficulties</option>{[...new Set((report.questions ?? []).map(q => q.difficulty ?? "custom"))].map(value => <option key={value} value={value}>{value}</option>)}</select><select aria-label="Evaluation result filter" className="field !w-auto" value={resultFilter} onChange={e => { setResultFilter(e.target.value); setPage(0); }}>{["all", "Pass", "Retrieval miss", "Citation mismatch", "Abstained correctly", "Unexpected answer"].map(value => <option key={value} value={value}>{value === "all" ? "All results" : value}</option>)}</select></div><div className="overflow-x-auto"><table className="data-table w-full"><thead><tr><th>Question</th><th>Difficulty</th><th>Expected source</th><th>Retrieved source</th><th>Recall@5</th><th>Citation correct</th><th>Result</th></tr></thead><tbody>{cases.slice(page * 10, page * 10 + 10).map(item => <tr key={item.questionId}><td><button className="max-w-lg text-left text-primary hover:underline" onClick={() => { setSelected(item); setExpanded([]); }}>{item.question}</button></td><td>{report.questions?.find(q => q.id === item.questionId)?.difficulty ?? "custom"}</td><td>{item.expectedSourceFile ?? "No evidence expected"}</td><td>{[...new Set(item.run.candidates.map(c => c.filename))].join(", ") || "None"}</td><td>{percentage(item.metrics.recallAt5)}</td><td>{item.metrics.citationAccuracy == null ? "—" : item.metrics.citationAccuracy ? "Yes" : "No"}</td><td><Badge variant="outline">{status(item)}</Badge></td></tr>)}</tbody></table></div><div className="mt-4 flex items-center justify-between text-xs"><Button size="sm" variant="outline" disabled={!page} onClick={() => setPage(page - 1)}>Previous</Button><span>{cases.length} cases · Page {page + 1}</span><Button size="sm" variant="outline" disabled={(page + 1) * 10 >= cases.length} onClick={() => setPage(page + 1)}>Next</Button></div></Panel>
-        </>}
-        <Drawer open={!!selected} onOpenChange={open => { if (!open) setSelected(null); }} title="Evaluation case" description="Expected labels and actual generated output from the selected client run.">{selected && <div className="space-y-5 py-5"><h3 className="text-sm font-semibold leading-6">{selected.question}</h3><div className="rounded-lg border p-4"><h4 className="eyebrow mb-2">Expected answer</h4><p className="text-xs leading-6">{selected.expectedAnswer ?? (selected.expectedAbstention ? "Abstain: no supporting evidence expected." : "No reference answer supplied; scoring uses evidence anchors.")}</p><p className="mt-2 text-[10px] text-muted-foreground">Expected source: {selected.expectedSourceFile ?? "None"}</p><p className="mt-2 text-[10px] leading-5 text-muted-foreground">Expected evidence: {report?.questions?.find(q => q.id === selected.questionId)?.goldAnchors.map(a => a.phrase).join(" · ") || "No evidence anchors"}</p></div><div className="rounded-lg border p-4"><h4 className="eyebrow mb-2">Generated answer</h4><p className="whitespace-pre-wrap text-xs leading-6">{selected.run.answer}</p><p className="mono mt-3 break-all text-[10px]">Generated citations: {selected.run.citations.map(c => `${c.chunkId} (${c.valid ? "valid" : "invalid"})`).join(", ") || "None"}</p></div><dl className="grid grid-cols-2 gap-3">{metricDefinitions.map(m => <div key={m.key} className="rounded border p-3 text-xs"><dt className="text-muted-foreground">{m.label}</dt><dd className="mono mt-2">{percentage(selected.metrics[m.key])}</dd></div>)}</dl><h4 className="eyebrow">Retrieved evidence</h4><LiveEvidence chunks={selected.run.candidates} selected={null} expanded={expanded} onToggle={id => setExpanded(current => current.includes(id) ? current.filter(c => c !== id) : [...current, id])} onDocument={id => setDocument({ profile: selected.run.profileId, id })} /></div>}</Drawer>{document && <ClientDocuments profileId={document.profile} documentId={document.id} onClose={() => setDocument(null)} />}<ClientFooter />
-    </>;
+    const {
+        setSettings,
+        difficulty,
+        setDifficulty,
+        dataset,
+        setDataset,
+        setSelectedProfiles,
+        job,
+        setJob,
+        report,
+        setReport,
+        reports,
+        setActiveProfile,
+        error,
+        busy,
+        search,
+        setSearch,
+        resultFilter,
+        setResultFilter,
+        selected,
+        setSelected,
+        expanded,
+        setExpanded,
+        document,
+        setDocument,
+        resource,
+        setResource,
+        page,
+        setPage,
+        data,
+        settings,
+        resultProfile,
+        eligibleIds,
+        cases,
+        chartData,
+        run,
+        completed,
+        importFile,
+        status,
+    } = useLiveEvaluation();
+    return (
+        <>
+            <PageHeading
+                eyebrow="CLIENT EVALUATION"
+                title="Evaluate your RAG workflow"
+                description="Measure retrieval and citation behavior against evidence labels from your own corpus."
+                action={
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                            downloadJson(
+                                "evaluation-template.json",
+                                evaluationTemplate,
+                            )
+                        }
+                    >
+                        <Download size={13} />
+                        Dataset template
+                    </Button>
+                }
+            />
+            {(error || data.error) && (
+                <ClientError
+                    message={error || data.error}
+                    retry={data.refresh}
+                />
+            )}
+            {!data.loading && !data.error && !data.corpora.length ? (
+                <NoClientData />
+            ) : (
+                <div className="mb-6 grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <Panel
+                        title="Experiment profiles"
+                        icon={<FlaskConical size={14} />}
+                    >
+                        <label className="block">
+                            <span className="field-label">Corpus</span>
+                            <select
+                                className="field"
+                                value={data.corpusId}
+                                onChange={(e) =>
+                                    data.setCorpusId(e.target.value)
+                                }
+                            >
+                                <option value="" disabled>
+                                    Select a corpus
+                                </option>
+                                {data.corpora.map((c) => (
+                                    <option value={c.id} key={c.id}>
+                                        {c.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <p className="my-4 text-[11px] leading-6 text-muted-foreground">
+                            Select indexed profiles from the same corpus. Each
+                            run uses the same questions and Top K 5 for
+                            comparable retrieval metrics.
+                        </p>
+                        <div className="space-y-3">
+                            {data.profiles.map((p) => (
+                                <label
+                                    key={p.id}
+                                    className="flex items-start gap-3 rounded-md border p-3 text-xs"
+                                >
+                                    <input
+                                        className="mt-0.5 accent-primary"
+                                        type="checkbox"
+                                        disabled={
+                                            p.status !== "ready" ||
+                                            !p.chunkCount
+                                        }
+                                        checked={eligibleIds.includes(p.id)}
+                                        onChange={(e) =>
+                                            setSelectedProfiles((current) =>
+                                                e.target.checked
+                                                    ? [...current, p.id]
+                                                    : current.filter(
+                                                          (id) => id !== p.id,
+                                                      ),
+                                            )
+                                        }
+                                    />
+                                    <span>
+                                        <strong className="font-medium">
+                                            {p.name}
+                                        </strong>
+                                        <span className="mt-1 block text-[10px] text-muted-foreground">
+                                            {p.strategy} · {p.chunkCount} chunks
+                                        </span>
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                        <details className="mt-4 border-t pt-4">
+                            <summary className="mb-4 text-xs font-medium">
+                                Evaluation retrieval settings
+                            </summary>
+                            <QueryControls
+                                fixedTopK
+                                settings={settings}
+                                onChange={(next) =>
+                                    setSettings({ ...next, topK: 5 })
+                                }
+                                capabilities={data.capabilities}
+                                disabled={busy}
+                            />
+                            <p className="mt-2 text-[10px] text-muted-foreground">
+                                Top K is fixed at 5 for these evaluation
+                                metrics.
+                            </p>
+                        </details>
+                    </Panel>
+                    <Panel
+                        title="Evaluation questions"
+                        icon={<FileJson size={14} />}
+                        action={
+                            <label className="cursor-pointer text-xs text-primary">
+                                <span className="flex items-center gap-1">
+                                    <Upload size={12} />
+                                    Import JSON
+                                </span>
+                                <input
+                                    type="file"
+                                    accept=".json,application/json"
+                                    className="sr-only"
+                                    onChange={(e) =>
+                                        void importFile(e.target.files?.[0])
+                                    }
+                                />
+                            </label>
+                        }
+                    >
+                        <label className="block">
+                            <span className="sr-only">
+                                Evaluation dataset JSON
+                            </span>
+                            <textarea
+                                className="field mono min-h-48 !text-[11px] !leading-5"
+                                value={dataset}
+                                onChange={(e) => setDataset(e.target.value)}
+                                placeholder={
+                                    '{"questions": [{"id": "case-1", "question": "…", "expectedSourceFile": "policy.md", "goldAnchors": [{"phrase": "verbatim evidence"}]}]}'
+                                }
+                            />
+                        </label>
+                        <p className="mt-3 text-[11px] leading-6 text-muted-foreground">
+                            Use exact source filenames and verbatim evidence
+                            phrases. Missing or ambiguous anchors are rejected
+                            before execution. Model calls use your configured
+                            endpoint.
+                        </p>
+                        <Button
+                            className="mt-4"
+                            size="sm"
+                            disabled={
+                                busy ||
+                                !eligibleIds.length ||
+                                !dataset.trim() ||
+                                (!!job &&
+                                    ["queued", "running", "paused"].includes(
+                                        job.status,
+                                    ))
+                            }
+                            onClick={() => void run()}
+                        >
+                            <FlaskConical size={12} />
+                            Run evaluation
+                        </Button>
+                        {job && (
+                            <div className="mt-4">
+                                <JobProgress
+                                    key={job.id}
+                                    initial={job}
+                                    onComplete={(next) => {
+                                        setJob(next);
+                                        void completed(next);
+                                    }}
+                                />
+                            </div>
+                        )}
+                        <RecentJobs
+                            kind="evaluation"
+                            onSelect={(next) => {
+                                setJob(next);
+                                void completed(next);
+                            }}
+                        />
+                    </Panel>
+                </div>
+            )}
+            {report && resultProfile && (
+                <>
+                    <div className="mb-4 flex flex-wrap items-center gap-3">
+                        <Badge variant="outline">
+                            Client results · {report.status}
+                        </Badge>
+                        <select
+                            aria-label="Evaluation run"
+                            className="field !w-auto"
+                            value={report.id}
+                            onChange={(e) => {
+                                const item = reports.find(
+                                    (r) => r.id === e.target.value,
+                                );
+                                if (item) {
+                                    setReport(item);
+                                    setActiveProfile(
+                                        item.profiles[0]?.profileId ?? "",
+                                    );
+                                    setPage(0);
+                                }
+                            }}
+                        >
+                            {reports.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                    Run {r.id.slice(0, 8)}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            aria-label="Result profile"
+                            className="field !w-auto"
+                            value={resultProfile.profileId}
+                            onChange={(e) => {
+                                setActiveProfile(e.target.value);
+                                setPage(0);
+                            }}
+                        >
+                            {report.profiles.map((p) => (
+                                <option key={p.profileId} value={p.profileId}>
+                                    {p.profileName}
+                                </option>
+                            ))}
+                        </select>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="ml-auto"
+                            onClick={() =>
+                                downloadJson(
+                                    `evaluation-${report.id}.json`,
+                                    report,
+                                )
+                            }
+                        >
+                            <Download size={12} />
+                            Export results
+                        </Button>
+                    </div>
+                    <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
+                        {metricDefinitions.map((metric) => (
+                            <Panel key={metric.key} bodyClassName="!p-4">
+                                <div className="flex items-center justify-between gap-1 text-[10px] text-muted-foreground">
+                                    {metric.label}
+                                    <Hint text={metric.definition} />
+                                </div>
+                                <p className="mono mt-3 text-xl font-semibold">
+                                    {percentage(
+                                        resultProfile.metrics[metric.key],
+                                    )}
+                                </p>
+                            </Panel>
+                        ))}
+                    </div>
+                    <p className="mb-5 text-[11px] leading-6 text-muted-foreground">
+                        {resultProfile.outcomes.length} labeled cases ·
+                        Unavailable metrics display —. Lexical overlap does not
+                        establish semantic support. These results are
+                        independent of the published deterministic benchmark.
+                    </p>
+                    <Panel
+                        title="Profile comparison"
+                        bodyClassName="overflow-x-auto"
+                    >
+                        <table className="data-table w-full">
+                            <thead>
+                                <tr>
+                                    {[
+                                        "Profile",
+                                        "Recall@5",
+                                        "Embedding operations",
+                                        "Average context tokens",
+                                        "Average latency",
+                                    ].map((label) => (
+                                        <th key={label}>{label}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {report.profiles.map((p) => (
+                                    <tr key={p.profileId}>
+                                        <th>{p.profileName}</th>
+                                        <td>
+                                            {percentage(p.metrics.recallAt5)}
+                                        </td>
+                                        <td>{p.embeddingOperations}</td>
+                                        <td>
+                                            {p.averageContextTokens.toFixed(1)}
+                                        </td>
+                                        <td>
+                                            {p.averageLatencyMs.toFixed(1)} ms
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </Panel>
+                    <EvaluationCharts
+                        chartData={chartData}
+                        resource={resource}
+                        setResource={setResource}
+                    />
+                    <Panel title="Evaluation cases">
+                        <div className="mb-4 flex flex-wrap gap-3">
+                            <label className="relative min-w-52 flex-1">
+                                <Search
+                                    size={13}
+                                    className="absolute left-3 top-3 text-muted-foreground"
+                                />
+                                <input
+                                    className="field !pl-9"
+                                    aria-label="Search client evaluation cases"
+                                    placeholder="Search questions…"
+                                    value={search}
+                                    onChange={(e) => {
+                                        setSearch(e.target.value);
+                                        setPage(0);
+                                    }}
+                                />
+                            </label>
+                            <select
+                                aria-label="Difficulty filter"
+                                className="field !w-auto"
+                                value={difficulty}
+                                onChange={(e) => {
+                                    setDifficulty(e.target.value);
+                                    setPage(0);
+                                }}
+                            >
+                                <option value="all">All difficulties</option>
+                                {[
+                                    ...new Set(
+                                        (report.questions ?? []).map(
+                                            (q) => q.difficulty ?? "custom",
+                                        ),
+                                    ),
+                                ].map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                aria-label="Evaluation result filter"
+                                className="field !w-auto"
+                                value={resultFilter}
+                                onChange={(e) => {
+                                    setResultFilter(e.target.value);
+                                    setPage(0);
+                                }}
+                            >
+                                {[
+                                    "all",
+                                    "Pass",
+                                    "Retrieval miss",
+                                    "Citation mismatch",
+                                    "Abstained correctly",
+                                    "Unexpected answer",
+                                ].map((value) => (
+                                    <option key={value} value={value}>
+                                        {value === "all"
+                                            ? "All results"
+                                            : value}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="data-table w-full">
+                                <thead>
+                                    <tr>
+                                        <th>Question</th>
+                                        <th>Difficulty</th>
+                                        <th>Expected source</th>
+                                        <th>Retrieved source</th>
+                                        <th>Recall@5</th>
+                                        <th>Citation correct</th>
+                                        <th>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {cases
+                                        .slice(page * 10, page * 10 + 10)
+                                        .map((item) => (
+                                            <tr key={item.questionId}>
+                                                <td>
+                                                    <button
+                                                        className="max-w-lg text-left text-primary hover:underline"
+                                                        onClick={() => {
+                                                            setSelected(item);
+                                                            setExpanded([]);
+                                                        }}
+                                                    >
+                                                        {item.question}
+                                                    </button>
+                                                </td>
+                                                <td>
+                                                    {report.questions?.find(
+                                                        (q) =>
+                                                            q.id ===
+                                                            item.questionId,
+                                                    )?.difficulty ?? "custom"}
+                                                </td>
+                                                <td>
+                                                    {item.expectedSourceFile ??
+                                                        "No evidence expected"}
+                                                </td>
+                                                <td>
+                                                    {[
+                                                        ...new Set(
+                                                            item.run.candidates.map(
+                                                                (c) =>
+                                                                    c.filename,
+                                                            ),
+                                                        ),
+                                                    ].join(", ") || "None"}
+                                                </td>
+                                                <td>
+                                                    {percentage(
+                                                        item.metrics.recallAt5,
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {item.metrics
+                                                        .citationAccuracy ==
+                                                    null
+                                                        ? "—"
+                                                        : item.metrics
+                                                                .citationAccuracy
+                                                          ? "Yes"
+                                                          : "No"}
+                                                </td>
+                                                <td>
+                                                    <Badge variant="outline">
+                                                        {status(item)}
+                                                    </Badge>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between text-xs">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!page}
+                                onClick={() => setPage(page - 1)}
+                            >
+                                Previous
+                            </Button>
+                            <span>
+                                {cases.length} cases · Page {page + 1}
+                            </span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={(page + 1) * 10 >= cases.length}
+                                onClick={() => setPage(page + 1)}
+                            >
+                                Next
+                            </Button>
+                        </div>
+                    </Panel>
+                </>
+            )}
+            <Drawer
+                open={!!selected}
+                onOpenChange={(open) => {
+                    if (!open) setSelected(null);
+                }}
+                title="Evaluation case"
+                description="Expected labels and actual generated output from the selected client run."
+            >
+                {selected && (
+                    <div className="space-y-5 py-5">
+                        <h3 className="text-sm font-semibold leading-6">
+                            {selected.question}
+                        </h3>
+                        <div className="rounded-lg border p-4">
+                            <h4 className="eyebrow mb-2">Expected answer</h4>
+                            <p className="text-xs leading-6">
+                                {selected.expectedAnswer ??
+                                    (selected.expectedAbstention
+                                        ? "Abstain: no supporting evidence expected."
+                                        : "No reference answer supplied; scoring uses evidence anchors.")}
+                            </p>
+                            <p className="mt-2 text-[10px] text-muted-foreground">
+                                Expected source:{" "}
+                                {selected.expectedSourceFile ?? "None"}
+                            </p>
+                            <p className="mt-2 text-[10px] leading-5 text-muted-foreground">
+                                Expected evidence:{" "}
+                                {report?.questions
+                                    ?.find((q) => q.id === selected.questionId)
+                                    ?.goldAnchors.map((a) => a.phrase)
+                                    .join(" · ") || "No evidence anchors"}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border p-4">
+                            <h4 className="eyebrow mb-2">Generated answer</h4>
+                            <p className="whitespace-pre-wrap text-xs leading-6">
+                                {selected.run.answer}
+                            </p>
+                            <p className="mono mt-3 break-all text-[10px]">
+                                Generated citations:{" "}
+                                {selected.run.citations
+                                    .map(
+                                        (c) =>
+                                            `${c.chunkId} (${c.valid ? "valid" : "invalid"})`,
+                                    )
+                                    .join(", ") || "None"}
+                            </p>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-3">
+                            {metricDefinitions.map((m) => (
+                                <div
+                                    key={m.key}
+                                    className="rounded border p-3 text-xs"
+                                >
+                                    <dt className="text-muted-foreground">
+                                        {m.label}
+                                    </dt>
+                                    <dd className="mono mt-2">
+                                        {percentage(selected.metrics[m.key])}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                        <h4 className="eyebrow">Retrieved evidence</h4>
+                        <LiveEvidence
+                            chunks={selected.run.candidates}
+                            selected={null}
+                            expanded={expanded}
+                            onToggle={(id) =>
+                                setExpanded((current) =>
+                                    current.includes(id)
+                                        ? current.filter((c) => c !== id)
+                                        : [...current, id],
+                                )
+                            }
+                            onDocument={(id) =>
+                                setDocument({
+                                    profile: selected.run.profileId,
+                                    id,
+                                })
+                            }
+                        />
+                    </div>
+                )}
+            </Drawer>
+            {document && (
+                <ClientDocuments
+                    profileId={document.profile}
+                    documentId={document.id}
+                    onClose={() => setDocument(null)}
+                />
+            )}
+            <ClientFooter />
+        </>
+    );
 }

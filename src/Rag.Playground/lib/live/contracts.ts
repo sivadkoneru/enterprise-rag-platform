@@ -1,6 +1,9 @@
 import type { ChunkingStrategy, TraceStage } from "@/lib/contracts";
 
 export interface EnvironmentCapabilities {
+    llmProvider?: string;
+    chatModel?: string;
+    systemPromptHash?: string;
     reranker: boolean;
     hybrid: boolean;
     embeddingModel: string;
@@ -79,6 +82,13 @@ export interface LiveChunk {
     isNeighbor?: boolean;
 }
 export interface LiveQueryRun {
+    provider?: string | null;
+    embeddingModel?: string | null;
+    chatModel?: string | null;
+    systemPromptHash?: string | null;
+    traceId?: string | null;
+    embeddingTokens?: number | null;
+    embeddingCalls?: number;
     id: string;
     createdAt: string;
     question: string;
@@ -129,6 +139,7 @@ export interface LiveEvaluationMetrics {
     abstentionAccuracy: number | null;
 }
 export interface EvaluationRun {
+    schemaVersion?: number;
     id: string;
     status: string;
     questions?: EvaluationQuestion[];

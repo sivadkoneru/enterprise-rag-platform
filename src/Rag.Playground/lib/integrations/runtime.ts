@@ -2,7 +2,7 @@ import type { ConfigurationCatalog, ConfigurationField, FieldPrimitive } from "@
 
 export interface ReadinessCheck {
   id: string;
-  status: "ready" | "unconfigured" | "unavailable";
+  status: "ready" | "configured" | "unconfigured" | "unavailable";
   detail: string;
 }
 
@@ -75,7 +75,7 @@ function isReadiness(value: unknown): value is ReadinessResult {
     && Array.isArray(value.checks)
     && value.checks.every((check) => isRecord(check)
       && typeof check.id === "string"
-      && (check.status === "ready" || check.status === "unconfigured" || check.status === "unavailable")
+      && (check.status === "ready" || check.status === "configured" || check.status === "unconfigured" || check.status === "unavailable")
       && typeof check.detail === "string");
 }
 

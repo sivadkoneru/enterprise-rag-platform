@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 
 test("client environment reports an unavailable API without demo fallback", async ({ page }) => {
+    test.skip(!process.env.CLIENT_E2E, "Client mode is disabled on the public demo.");
     await page.route("**/api/client/**", route => route.fulfill({ status: 503, json: { detail: "Client API is not configured." } }));
     await page.goto("/");
     await page.getByLabel("Environment mode").selectOption("client");
@@ -35,7 +36,7 @@ test("own data flows through ingestion, citations, retrieval, and evaluation", a
     await page.keyboard.press("Home");
     await page.getByRole("button", { name: "Run Query", exact: true }).click();
     await expect(page.getByRole("button", { name: "Citation 1: show source" })).toBeVisible({ timeout: 30000 });
-    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Grounded Answer", exact: true }) })).toContainText("30 calendar days");
+    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Answer with source references", exact: true }) })).toContainText("30 calendar days");
     await page.getByRole("button", { name: "Citation 1: show source" }).click();
     await expect(page.locator('[data-highlighted="true"]')).toContainText("client-policy.md");
     await page.locator('[data-highlighted="true"]').getByRole("button", { name: "View document" }).click();
@@ -43,7 +44,7 @@ test("own data flows through ingestion, citations, retrieval, and evaluation", a
     await page.keyboard.press("Escape");
     await expect(page.getByText("measured stages", { exact: true })).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: "test-results/client-playground-desktop.png", fullPage: true });
+    await page.screenshot({ path: "test-results/client-playground-desktop.png", fullPage: false });
     await page.getByRole("link", { name: "Retrieval", exact: true }).first().click();
     await expect(page.getByRole("heading", { name: "Retrieval inspector", exact: true })).toBeVisible();
     await page.getByLabel("Document corpus").selectOption({ label: corpusName });

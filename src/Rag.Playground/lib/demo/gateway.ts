@@ -460,12 +460,8 @@ export function createRun(request: QueryRequest): QueryRun {
         totalLatencyMs: trace.reduce((sum, stage) => sum + stage.durationMs, 0),
         contextTokens,
         outputTokens,
-        confidence: abstained
-            ? "Insufficient"
-            : evidence.length >= 3
-              ? "High"
-              : "Partial",
-        confidenceReason: abstained
+        evidenceStatements: abstained ? 0 : evidence.length,
+        evidenceReason: abstained
             ? "No complete supporting sentence was admitted to context."
             : `${evidence.length} cited statements have complete supporting sentences in context. This is evidence coverage, not a probability of correctness.`,
         abstained,

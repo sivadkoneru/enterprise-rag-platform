@@ -16,6 +16,7 @@ export function useClientData() {
         const controller = new AbortController();
         Promise.all([liveGateway.listCorpora(controller.signal), liveGateway.capabilities(controller.signal)])
             .then(([items, caps]) => {
+                if (controller.signal.aborted) return;
                 setCorpora(items); setCapabilities(caps); setError("");
                 setCorpusId(current => items.some(item => item.id === current) ? current : items[0]?.id ?? "");
             }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Client data could not be loaded."); })
@@ -26,6 +27,7 @@ export function useClientData() {
         if (!corpusId) return;
         const controller = new AbortController();
         liveGateway.listProfiles(corpusId, controller.signal).then(items => {
+            if (controller.signal.aborted) return;
             setProfiles(items);
             setProfileId(current => items.some(item => item.id === current) ? current : items[0]?.id ?? "");
         }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Profiles could not be loaded."); });
