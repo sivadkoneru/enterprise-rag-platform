@@ -1,0 +1,19 @@
+Severity-one incidents receive an initial human response within one hour during the support coverage period.
+
+Support coverage is Monday through Friday, 08:00 to 18:00 UTC, excluding published holidays.
+
+Severity-two incidents have an initial response target of eight business hours.
+
+Response targets describe acknowledgment, not guaranteed resolution time.
+
+Escalations require the existing ticket number and a short business-impact summary.
+
+Customers can review ticket updates in the support portal.
+
+Attach redacted diagnostic logs; never attach passwords or API keys to support tickets.
+
+A support ticket closes after ten business days without a customer response.
+
+Closed support tickets can be reopened within five business days.
+
+Emergency phone support is included only in the assisted operations add-on.

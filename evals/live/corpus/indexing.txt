@@ -1,0 +1,19 @@
+Changing the embedding model requires a new indexing profile and re-ingestion.
+
+Changing embedding dimensions requires a new indexing profile.
+
+A ready profile is required before querying.
+
+A profile used by a queued, running, or paused evaluation cannot accept ingestion.
+
+A paused evaluation resumes only if its profile snapshot and corpus revision still match.
+
+Vector retrieval orders candidates using the configured vector store score.
+
+Hybrid retrieval combines vector and BM25 rankings with reciprocal rank fusion.
+
+Reranking reorders a fixed candidate pool and cannot recover documents absent from that pool.
+
+Citation reference resolution confirms a reference points to admitted context; it does not prove entailment.
+
+Stage events report pipeline progress and are not streamed model tokens.

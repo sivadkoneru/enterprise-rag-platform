@@ -1,0 +1,19 @@
+Query history is retained in browser session memory until the page closes.
+
+Evaluation reports persist in the configured job store until an operator deletes them.
+
+Deleted evaluation reports are removed from the primary store within 24 hours of an operator cleanup.
+
+Daily backups are retained for seven days.
+
+Backup restoration is tested monthly using synthetic documents.
+
+Exported reports may contain answers and evidence passages and must be reviewed before sharing.
+
+The demonstration corpus contains synthetic documents only.
+
+Live environments use operator-managed credentials kept outside browser forms.
+
+Corpus identifiers separate retrieval data but do not establish tenant authorization.
+
+A remote live deployment requires authentication and authorization in addition to TLS.

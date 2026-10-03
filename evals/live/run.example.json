@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "apiUrl": "http://localhost:8080",
+  "corpusId": "REPLACE",
+  "profileId": "REPLACE",
+  "embeddingModel": "REPLACE",
+  "chatModel": "REPLACE",
+  "commit": "REPLACE_WITH_GIT_COMMIT",
+  "split": "held-out",
+  "budgetUsd": 10,
+  "ingestionEstimatedUsd": 0,
+  "pricing": {
+    "date": "REPLACE_WITH_PRICING_DATE",
+    "currency": "USD",
+    "embeddingPerMillion": 0,
+    "inputPerMillion": 0,
+    "outputPerMillion": 0,
+    "judgeInputPerMillion": 0,
+    "judgeOutputPerMillion": 0
+  },
+  "judgeEndpoint": null,
+  "judgeModel": null,
+  "minRelevance": 0.7,
+  "maxContextTokens": 4096
+}

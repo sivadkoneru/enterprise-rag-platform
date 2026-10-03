@@ -1,0 +1,19 @@
+Direct purchases can be refunded within 30 calendar days of purchase.
+
+A direct refund requires the order number and original payment receipt.
+
+Approved direct refunds return to the original payment method in five business days.
+
+Direct subscriptions can be canceled in the billing portal at any time.
+
+Canceling a direct subscription stops renewal but keeps access until the paid term ends.
+
+Direct annual plans are not prorated after the refund window closes.
+
+Direct trial accounts expire after 14 days unless upgraded.
+
+Direct invoices are emailed to the billing administrator on the first day of each month.
+
+Direct customers may update their payment method in Billing Settings.
+
+Disputed direct charges must be reported to billing@example.invalid with the invoice ID.

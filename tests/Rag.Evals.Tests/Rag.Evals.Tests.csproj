@@ -4,6 +4,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../evals/Rag.LiveEvals/Rag.LiveEvals.csproj" />
     <ProjectReference Include="..\..\evals\Rag.Evals\Rag.Evals.csproj" />
     <ProjectReference Include="..\..\src\Rag.Core\Rag.Core.csproj" />
   </ItemGroup>
